@@ -1,14 +1,13 @@
 from fastapi import FastAPI
 
+from app.core.config import settings
+from app.core.lifespan import lifespan
+
 app = FastAPI(
-    title="AI Marketing Platform",
-    version="1.0.0",
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
+    lifespan=lifespan,
 )
-
-
-@app.get("/")
-def root():
-    return {"message": "AI Marketing Platform API"}
 
 
 @app.get("/health")
