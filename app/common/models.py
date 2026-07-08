@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
 
-class BaseModel(Base):
+class BaseEntity(Base):
     __abstract__ = True
 
     id: Mapped[UUID] = mapped_column(
@@ -36,3 +36,4 @@ class BaseModel(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
