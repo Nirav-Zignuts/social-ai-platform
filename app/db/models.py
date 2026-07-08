@@ -13,3 +13,6 @@ from app.models.business_profile import BusinessProfile
 from app.models.knowledge_document import KnowledgeDocument
 from app.models.knowledge_chunk import KnowledgeChunk
 from app.models.ai_configuration import AIConfiguration
+from app.models.generated_post import GeneratedPost
+from app.models.post_review import PostReview
+from app.models.publishing_job import PublishingJob

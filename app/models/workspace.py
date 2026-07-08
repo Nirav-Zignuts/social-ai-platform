@@ -27,4 +27,5 @@ class Workspace(BaseEntity):
     owner = relationship("User")
     business_profile = relationship("BusinessProfile", back_populates="workspace", uselist=False, cascade="all, delete-orphan")
     knowledge_documents = relationship("KnowledgeDocument", back_populates="workspace", cascade="all, delete-orphan")
+    generated_posts = relationship("GeneratedPost", back_populates="workspace", cascade="all, delete-orphan")
     ai_configuration = relationship("AIConfiguration", back_populates="workspace", uselist=False, cascade="all, delete-orphan")
