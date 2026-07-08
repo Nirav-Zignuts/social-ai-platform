@@ -1,7 +1,8 @@
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import ForeignKey, Integer, String, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.common.models import BaseEntity
@@ -20,6 +21,9 @@ class KnowledgeDocument(BaseEntity):
     file_path: Mapped[str] = mapped_column(String(500), nullable=False)
     file_size_bytes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="uploaded")
+    error_message: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    indexed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    
     uploaded_by: Mapped[Optional[UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
@@ -27,3 +31,4 @@ class KnowledgeDocument(BaseEntity):
 
     workspace = relationship("Workspace", back_populates="knowledge_documents")
     uploader = relationship("User")
+    chunks = relationship("KnowledgeChunk", back_populates="document", cascade="all, delete-orphan")

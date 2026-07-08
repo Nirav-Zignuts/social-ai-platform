@@ -149,6 +149,8 @@ async def login(
             code=status.HTTP_401_UNAUTHORIZED,
         )
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return ErrorMessage(
             message=ErrorMessages.SERVER_ERROR,
             code=status.HTTP_500_INTERNAL_SERVER_ERROR,

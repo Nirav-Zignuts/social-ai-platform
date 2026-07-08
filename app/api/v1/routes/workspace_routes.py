@@ -292,6 +292,8 @@ async def list_knowledge_documents(
     except HTTPException as e:
         return ErrorMessage(message=e.detail, code=e.status_code)
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return ErrorMessage(
             message=ErrorMessages.SERVER_ERROR,
             code=status.HTTP_500_INTERNAL_SERVER_ERROR,

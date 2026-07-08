@@ -194,6 +194,12 @@ class WorkspaceService:
             self._advance_onboarding_status(workspace, "knowledge_added")
             self.db.commit()
             self.db.refresh(doc)
+            
+            # Enqueue the background task
+            print(f"Enqueuing task for document: {doc.id}")
+            from app.knowledge.tasks import process_knowledge_document
+            process_knowledge_document.delay(str(doc.id))
+            
             return {"document": doc}
         except Exception as e:
             self.db.rollback()
@@ -211,7 +217,11 @@ class WorkspaceService:
         doc = self.knowledge_repo.get_by_id_and_workspace(document_id, workspace.id)
 
         if not doc:
-            raise HTTPException(status_code=404, detail=ErrorMessages.DOCUMENT_NOT_FOUND)
+            raise HTTPException(status_code=404, detail=ErrorMessages.RESOURCE_NOT_FOUND)
+
+        # Cleanup ChromaDB vectors
+        from app.knowledge.vectorstore import delete_document_vectors
+        delete_document_vectors(str(workspace.id), str(doc.id))
 
         file_path = doc.file_path
         self.knowledge_repo.delete(doc)
