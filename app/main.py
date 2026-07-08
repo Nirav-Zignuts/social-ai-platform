@@ -4,7 +4,7 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.core.lifespan import lifespan
-from app.api.v1.routes import auth_routes
+from app.api.v1.routes import auth_routes, workspace_routes
 from app.core.exception_handlers import (
     request_validation_exception_handler,
     pydantic_validation_exception_handler,
@@ -20,6 +20,10 @@ app = FastAPI(
 # Include API routes
 app.include_router(
     auth_routes.router,
+    prefix=settings.API_PREFIX,
+)
+app.include_router(
+    workspace_routes.router,
     prefix=settings.API_PREFIX,
 )
 

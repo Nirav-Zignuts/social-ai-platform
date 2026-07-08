@@ -88,3 +88,23 @@ class ErrorMessages:
     INVALID_TOKEN_TYPE = "Invalid token type"
     PASSWORD_MISMATCH = "Password does not match"
     WEAK_PASSWORD = "Password is too weak"
+    WORKSPACE_NOT_FOUND = "Workspace not found"
+    BUSINESS_PROFILE_NOT_FOUND = "Business profile not found for the given workspace"
+    AI_CONFIG_NOT_FOUND = "AI configuration not found for the given workspace"
+    DOCUMENT_NOT_FOUND = "Document not found"
+
+
+class WorkspaceMessages:
+    """Workspace related messages."""
+
+    WORKSPACE_CREATED = "Workspace created successfully"
+    WORKSPACES_RETRIEVED = "Workspaces retrieved successfully"
+    WORKSPACE_RETRIEVED = "Workspace retrieved successfully"
+    WORKSPACE_UPDATED = "Workspace updated successfully"
+    BUSINESS_PROFILE_UPSERTED = "Business profile saved successfully"
+    BUSINESS_PROFILE_RETRIEVED = "Business profile retrieved successfully"
+    AI_CONFIG_UPSERTED = "AI configuration saved successfully"
+    AI_CONFIG_RETRIEVED = "AI configuration retrieved successfully"
+    DOCUMENT_UPLOADED = "Document uploaded successfully"
+    DOCUMENTS_RETRIEVED = "Documents retrieved successfully"
+    DOCUMENT_DELETED = "Document deleted successfully"

@@ -16,6 +16,7 @@ class BaseRepository(Generic[ModelType]):
     def create(self, entity: ModelType) -> ModelType:
         self.db.add(entity)
         self.db.flush()
+        self.db.commit()
         self.db.refresh(entity)
         return entity
 
