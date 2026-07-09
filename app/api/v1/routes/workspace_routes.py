@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.schemas.workspace_schema import (
+    AIConfigurationResponse,
     AIConfigurationUpsert,
     BusinessProfileResponse,
     BusinessProfileUpsert,
@@ -320,6 +321,30 @@ async def delete_knowledge_document(
     except HTTPException as e:
         return ErrorMessage(message=e.detail, code=e.status_code)
     except Exception as e:
+        return ErrorMessage(
+            message=ErrorMessages.SERVER_ERROR,
+            code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            details=str(e),
+        )
+
+@router.post("/{workspace_id}/generate-now")
+async def generate_now(
+    workspace_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_auth),
+):
+    try:
+        service = WorkspaceService(db)
+        user_id_str = current_user.get("user_id")
+        print(f"Current user ID: {user_id_str}")  # Debugging line
+        user_id = UUID(user_id_str) if isinstance(user_id_str, str) else user_id_str
+        result = service.trigger_generation_cycle(workspace_id, user_id)
+        return result
+    except HTTPException as e:
+        return ErrorMessage(message=e.detail, code=e.status_code)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return ErrorMessage(
             message=ErrorMessages.SERVER_ERROR,
             code=status.HTTP_500_INTERNAL_SERVER_ERROR,

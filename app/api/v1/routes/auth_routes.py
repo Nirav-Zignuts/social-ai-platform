@@ -69,7 +69,7 @@ async def register(
         )
         print(f"Verification link: {verification_link}")  # For debugging purposes
         background_tasks.add_task(
-            email_service.send_verification_email,
+            email_service.send_verification_email_safe,
             recipient=request.email,
             full_name=request.full_name,
             verification_link=verification_link,

@@ -1,7 +1,9 @@
-from typing import Optional
-from sqlalchemy import String, ForeignKey, Enum as SQLEnum
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from typing import List, Optional
 from uuid import UUID
+
+from sqlalchemy import String, ForeignKey, Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.common.models import BaseEntity
 from app.core.enums import PostReviewAction
@@ -32,6 +34,10 @@ class PostReview(BaseEntity):
     )
     feedback: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     edited_caption: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    edited_hashtags: Mapped[Optional[List[str]]] = mapped_column(
+        ARRAY(String), nullable=True
+    )
+    edited_cta: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # Relationships
     post = relationship("GeneratedPost", back_populates="reviews")

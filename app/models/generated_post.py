@@ -20,6 +20,7 @@ class GeneratedPost(BaseEntity):
         nullable=False,
         index=True
     )
+    content_type: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     caption: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     hashtags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
     cta: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -31,6 +32,7 @@ class GeneratedPost(BaseEntity):
         default=GeneratedPostStatus.DRAFT,
         index=True
     )
+    reviewer_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     reviewer_notes: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     regenerate_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     

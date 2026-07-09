@@ -231,3 +231,11 @@ class WorkspaceService:
                 os.remove(file_path)
             except Exception:
                 pass
+
+    def trigger_generation_cycle(self, workspace_id: UUID, user_id: UUID) -> dict:
+        print(f"Triggering generation cycle for workspace: {workspace_id}")
+        workspace = self._get_workspace_or_404(workspace_id, user_id)
+        from app.services.generation_tasks import run_generation_cycle
+        print(f"Running generation cycle for workspace: {workspace.id}")
+        task = run_generation_cycle.delay(str(workspace.id))
+        return {"generation_cycle_id": task.id, "status": "queued"}

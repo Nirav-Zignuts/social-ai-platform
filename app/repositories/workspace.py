@@ -22,6 +22,13 @@ class WorkspaceRepository(BaseRepository[Workspace]):
         stmt = select(self.model).where(self.model.owner_id == user_id)
         return list(self.db.execute(stmt).scalars().all())
 
+    def get_owned_workspace(self, workspace_id: UUID, user_id: UUID) -> Optional[Workspace]:
+        stmt = select(self.model).where(
+            self.model.id == workspace_id,
+            self.model.owner_id == user_id,
+        )
+        return self.db.execute(stmt).scalar_one_or_none()
+
 
 class BusinessProfileRepository(BaseRepository[BusinessProfile]):
     model = BusinessProfile

@@ -29,3 +29,4 @@ class Workspace(BaseEntity):
     knowledge_documents = relationship("KnowledgeDocument", back_populates="workspace", cascade="all, delete-orphan")
     generated_posts = relationship("GeneratedPost", back_populates="workspace", cascade="all, delete-orphan")
     ai_configuration = relationship("AIConfiguration", back_populates="workspace", uselist=False, cascade="all, delete-orphan")
+    connected_accounts = relationship("ConnectedAccount", back_populates="workspace", cascade="all, delete-orphan")

@@ -1,0 +1,226 @@
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
+from sqlalchemy.orm import Session
+
+from app.api.v1.schemas.generated_post_schema import (
+    EditReviewRequest,
+    GeneratedPostResponse,
+    RegenerateReviewRequest,
+    RejectReviewRequest,
+)
+from app.common.messages import ErrorMessage, ErrorMessages, SuccessMessage
+from app.db.session import get_db
+from app.middlewares.auth_middleware import require_auth
+from app.services.generated_post_service import GeneratedPostService
+from app.services.post_review_service import PostReviewService
+
+router = APIRouter(
+    prefix="/workspaces/{workspace_id}/generated-posts",
+    tags=["Generated Posts"],
+)
+
+
+def _user_id(current_user) -> UUID:
+    user_id_str = current_user.get("user_id")
+    return UUID(user_id_str) if isinstance(user_id_str, str) else user_id_str
+
+
+@router.get("", response_model=SuccessMessage)
+async def list_generated_posts(
+    workspace_id: UUID,
+    status: str | None = Query(None, description="Filter by post status"),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_auth),
+):
+    try:
+        service = GeneratedPostService(db)
+        posts = service.list_posts(workspace_id, _user_id(current_user), status=status)
+        data = [
+            GeneratedPostResponse.model_validate(p).model_dump(mode="json") for p in posts
+        ]
+        return SuccessMessage(
+            message="Generated posts retrieved successfully",
+            data={"posts": data},
+            code=http_status.HTTP_200_OK,
+        )
+    except HTTPException as e:
+        return ErrorMessage(message=e.detail, code=e.status_code)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return ErrorMessage(
+            message=ErrorMessages.SERVER_ERROR,
+            code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            details=str(e),
+        )
+
+
+@router.get("/{post_id}", response_model=SuccessMessage)
+async def get_generated_post(
+    workspace_id: UUID,
+    post_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_auth),
+):
+    try:
+        service = GeneratedPostService(db)
+        result = service.get_post(workspace_id, post_id, _user_id(current_user))
+        post_data = GeneratedPostResponse.model_validate(result["post"]).model_dump(
+            mode="json"
+        )
+        return SuccessMessage(
+            message="Generated post retrieved successfully",
+            data={
+                "post": post_data,
+                "review_link": result["review_link"],
+            },
+            code=http_status.HTTP_200_OK,
+        )
+    except HTTPException as e:
+        return ErrorMessage(message=e.detail, code=e.status_code)
+    except Exception as e:
+        return ErrorMessage(
+            message=ErrorMessages.SERVER_ERROR,
+            code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            details=str(e),
+        )
+
+
+@router.post("/{post_id}/review/approve", response_model=SuccessMessage)
+async def approve_post(
+    workspace_id: UUID,
+    post_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_auth),
+):
+    try:
+        service = PostReviewService(db)
+        post = service.approve(workspace_id, post_id, _user_id(current_user))
+        return SuccessMessage(
+            message="Post approved successfully",
+            data={"post": GeneratedPostResponse.model_validate(post).model_dump(mode="json")},
+            code=http_status.HTTP_200_OK,
+        )
+    except HTTPException as e:
+        return ErrorMessage(message=e.detail, code=e.status_code)
+    except Exception as e:
+        return ErrorMessage(
+            message=ErrorMessages.SERVER_ERROR,
+            code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            details=str(e),
+        )
+
+
+@router.post("/{post_id}/review/reject", response_model=SuccessMessage)
+async def reject_post(
+    workspace_id: UUID,
+    post_id: UUID,
+    payload: RejectReviewRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_auth),
+):
+    try:
+        service = PostReviewService(db)
+        post = service.reject(
+            workspace_id, post_id, _user_id(current_user), feedback=payload.feedback
+        )
+        return SuccessMessage(
+            message="Post rejected successfully",
+            data={"post": GeneratedPostResponse.model_validate(post).model_dump(mode="json")},
+            code=http_status.HTTP_200_OK,
+        )
+    except HTTPException as e:
+        return ErrorMessage(message=e.detail, code=e.status_code)
+    except Exception as e:
+        return ErrorMessage(
+            message=ErrorMessages.SERVER_ERROR,
+            code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            details=str(e),
+        )
+
+
+@router.post("/{post_id}/review/regenerate", response_model=SuccessMessage)
+async def regenerate_post(
+    workspace_id: UUID,
+    post_id: UUID,
+    payload: RegenerateReviewRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_auth),
+):
+    try:
+        service = PostReviewService(db)
+        post = service.regenerate(
+            workspace_id, post_id, _user_id(current_user), feedback=payload.feedback
+        )
+        return SuccessMessage(
+            message="Post regeneration started",
+            data={"post": GeneratedPostResponse.model_validate(post).model_dump(mode="json")},
+            code=http_status.HTTP_200_OK,
+        )
+    except HTTPException as e:
+        return ErrorMessage(message=e.detail, code=e.status_code)
+    except Exception as e:
+        return ErrorMessage(
+            message=ErrorMessages.SERVER_ERROR,
+            code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            details=str(e),
+        )
+
+
+@router.post("/{post_id}/review/skip", response_model=SuccessMessage)
+async def skip_post(
+    workspace_id: UUID,
+    post_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_auth),
+):
+    try:
+        service = PostReviewService(db)
+        post = service.skip(workspace_id, post_id, _user_id(current_user))
+        return SuccessMessage(
+            message="Post skipped successfully",
+            data={"post": GeneratedPostResponse.model_validate(post).model_dump(mode="json")},
+            code=http_status.HTTP_200_OK,
+        )
+    except HTTPException as e:
+        return ErrorMessage(message=e.detail, code=e.status_code)
+    except Exception as e:
+        return ErrorMessage(
+            message=ErrorMessages.SERVER_ERROR,
+            code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            details=str(e),
+        )
+
+
+@router.post("/{post_id}/review/edit", response_model=SuccessMessage)
+async def edit_post(
+    workspace_id: UUID,
+    post_id: UUID,
+    payload: EditReviewRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_auth),
+):
+    try:
+        service = PostReviewService(db)
+        post = service.edit(
+            workspace_id,
+            post_id,
+            _user_id(current_user),
+            caption=payload.caption,
+            hashtags=payload.hashtags,
+            cta=payload.cta,
+        )
+        return SuccessMessage(
+            message="Post edited and approved successfully",
+            data={"post": GeneratedPostResponse.model_validate(post).model_dump(mode="json")},
+            code=http_status.HTTP_200_OK,
+        )
+    except HTTPException as e:
+        return ErrorMessage(message=e.detail, code=e.status_code)
+    except Exception as e:
+        return ErrorMessage(
+            message=ErrorMessages.SERVER_ERROR,
+            code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            details=str(e),
+        )
