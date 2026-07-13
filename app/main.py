@@ -4,15 +4,24 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.core.lifespan import lifespan
-from app.api.v1.routes import auth_routes, workspace_routes, generated_post_routes, notification_routes, instagram_routes
+from app.api.v1.routes import (
+    auth_routes,
+    workspace_routes,
+    generated_post_routes,
+    notification_routes,
+    instagram_routes,
+    google_oauth_routes,
+)
 from app.core.exception_handlers import (
     request_validation_exception_handler,
     pydantic_validation_exception_handler,
     http_exception_handler,
     meta_integration_exception_handler,
+    google_integration_exception_handler,
 )
+from app.integrations.google.exceptions import GoogleIntegrationError
 from app.integrations.meta.exceptions import MetaIntegrationError
-
+from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
@@ -40,12 +49,24 @@ app.include_router(
     instagram_routes.router,
     prefix=settings.API_PREFIX,
 )
+app.include_router(
+    google_oauth_routes.router,
+    prefix=settings.API_PREFIX,
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Register global handlers for Pydantic / request validation errors (422)
 app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
 app.add_exception_handler(ValidationError, pydantic_validation_exception_handler)
 app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 app.add_exception_handler(MetaIntegrationError, meta_integration_exception_handler)
+app.add_exception_handler(GoogleIntegrationError, google_integration_exception_handler)
 
 
 @app.get("/health")

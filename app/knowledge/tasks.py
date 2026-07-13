@@ -31,7 +31,11 @@ def process_knowledge_document(self, document_id: str):
         logger.info(f"Document {document_id} status updated to processing.")
         # Load text
         try:
-            text = load_document_text(doc.file_path, doc.file_type)
+            text = load_document_text(
+                doc.file_path,
+                doc.file_type,
+                cloudinary_public_id=doc.cloudinary_public_id,
+            )
         except EmptyDocumentError as e:
             doc.status = "failed"
             doc.error_message = str(e)

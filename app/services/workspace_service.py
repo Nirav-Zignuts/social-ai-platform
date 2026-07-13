@@ -23,6 +23,7 @@ from app.repositories.workspace import (
     KnowledgeDocumentRepository,
     WorkspaceRepository,
 )
+from app.utils.cloudinary_service import CloudinaryService
 
 ONBOARDING_STATUS_ORDER = {
     "workspace_created": 1,
@@ -38,7 +39,6 @@ ALLOWED_FILE_TYPES = {
     "text/plain": "txt",
 }
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
-STORAGE_BASE_DIR = "storage/uploads"
 
 
 class WorkspaceService:
@@ -168,43 +168,53 @@ class WorkspaceService:
         if file_size > MAX_FILE_SIZE:
             raise HTTPException(status_code=400, detail="File too large. Max 10MB allowed.")
 
+        file_bytes = await file.read()
+        if len(file_bytes) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=400, detail="File too large. Max 10MB allowed.")
+
         doc = KnowledgeDocument(
             workspace_id=workspace.id,
             file_name=file.filename,
             file_type=file_extension,
-            file_size_bytes=file_size,
+            file_size_bytes=len(file_bytes),
             file_path="pending",
             uploaded_by=user_id,
-            status="uploaded"
+            status="uploaded",
         )
         self.db.add(doc)
         self.db.flush()
 
-        workspace_dir = os.path.join(STORAGE_BASE_DIR, str(workspace.id))
-        os.makedirs(workspace_dir, exist_ok=True)
-
-        file_path = os.path.join(workspace_dir, f"{doc.id}_{file.filename}")
+        cloudinary = CloudinaryService()
+        upload_public_id = f"{doc.id}.{file_extension}"
 
         try:
-            with open(file_path, "wb") as buffer:
-                while content := await file.read(1024 * 1024):
-                    buffer.write(content)
+            upload_result = cloudinary.upload_document(
+                file_bytes,
+                folder=f"knowledge/{workspace.id}",
+                public_id=upload_public_id,
+            )
 
-            doc.file_path = file_path
+            doc.file_path = upload_result.secure_url
+            doc.cloudinary_public_id = upload_result.public_id
             self._advance_onboarding_status(workspace, "knowledge_added")
             self.db.commit()
             self.db.refresh(doc)
-            
-            # Enqueue the background task
-            print(f"Enqueuing task for document: {doc.id}")
+            print(f"Document uploaded: {doc.id}")
+
             from app.knowledge.tasks import process_knowledge_document
+
             process_knowledge_document.delay(str(doc.id))
-            
+
             return {"document": doc}
         except Exception as e:
             self.db.rollback()
-            if os.path.exists(file_path):
-                os.remove(file_path)
+            try:
+                cloudinary.delete_resource(
+                    f"knowledge/{workspace.id}/{upload_public_id}",
+                    resource_type="raw",
+                )
+            except Exception:
+                pass
             raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
 
     def list_knowledge_documents(self, workspace_id: UUID, user_id: UUID) -> dict:
@@ -223,14 +233,14 @@ class WorkspaceService:
         from app.knowledge.vectorstore import delete_document_vectors
         delete_document_vectors(str(workspace.id), str(doc.id))
 
-        file_path = doc.file_path
-        self.knowledge_repo.delete(doc)
+        cloudinary = CloudinaryService()
+        public_id = doc.cloudinary_public_id or cloudinary.resolve_public_id(
+            secure_url=doc.file_path,
+        )
+        if public_id:
+            cloudinary.delete_resource(public_id, resource_type="raw")
 
-        if file_path and os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-            except Exception:
-                pass
+        self.knowledge_repo.delete(doc)
 
     def trigger_generation_cycle(self, workspace_id: UUID, user_id: UUID) -> dict:
         print(f"Triggering generation cycle for workspace: {workspace_id}")

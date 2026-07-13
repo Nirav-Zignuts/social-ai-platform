@@ -71,6 +71,7 @@ class KnowledgeDocumentResponse(BaseModel):
     file_path: str
     file_size_bytes: Optional[int]
     status: str
+    error_message: Optional[str]
     uploaded_by: Optional[UUID]
     created_at: datetime
     updated_at: datetime

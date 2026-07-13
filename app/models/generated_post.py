@@ -24,7 +24,7 @@ class GeneratedPost(BaseEntity):
     caption: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     hashtags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
     cta: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    image_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     
     status: Mapped[GeneratedPostStatus] = mapped_column(
         SQLEnum(GeneratedPostStatus, name="generated_post_status"),

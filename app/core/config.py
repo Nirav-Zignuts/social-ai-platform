@@ -11,7 +11,7 @@ class Settings(BaseSettings):
 
     API_PREFIX: str = "/api/v1"
 
-    DATABASE_URL: str
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql+psycopg://postgres:postgres@localhost:5432/social_ai_platform")
 
     SECRET_KEY: str
 
@@ -21,12 +21,46 @@ class Settings(BaseSettings):
     RSA_PRIVATE_KEY: str = os.getenv("RSA_PRIVATE_KEY")
     RSA_PUBLIC_KEY: str = os.getenv("RSA_PUBLIC_KEY")
 
-    SMTP_HOST: str
-    SMTP_PORT: int = 587
-    SMTP_USERNAME: str
-    SMTP_PASSWORD: str
-    EMAIL_FROM: str
-    FRONTEND_URL: str
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    SMTP_PORT: int = 465
+    SMTP_USERNAME: str = os.getenv("SMTP_USERNAME", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    EMAIL_FROM: str = os.getenv("EMAIL_FROM", "")
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+    META_APP_ID: str = os.getenv("META_APP_ID", "")
+    META_APP_SECRET: str = os.getenv("META_APP_SECRET", "")
+    META_REDIRECT_URI: str = os.getenv(
+        "META_REDIRECT_URI",
+        "http://localhost:8000/api/v1/instagram/callback",
+    )
+    META_GRAPH_VERSION: str = os.getenv("META_GRAPH_VERSION", "v21.0")
+    META_SCOPES: str = os.getenv(
+        "META_SCOPES",
+        "instagram_basic,pages_show_list,pages_read_engagement",
+    )
+
+    CLOUDINARY_CLOUD_NAME: str = os.getenv("CLOUDINARY_CLOUD_NAME", "")
+    CLOUDINARY_API_KEY: str = os.getenv("CLOUDINARY_API_KEY", "")
+    CLOUDINARY_API_SECRET: str = os.getenv("CLOUDINARY_API_SECRET", "")
+
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    GOOGLE_REDIRECT_URI: str = os.getenv(
+        "GOOGLE_REDIRECT_URI",
+        "http://localhost:8000/api/v1/auth/google/callback/",
+    )
+    GOOGLE_OAUTH_SCOPES: str = os.getenv(
+        "GOOGLE_OAUTH_SCOPES",
+        "openid email profile",
+    )
+    GOOGLE_OAUTH_DEFAULT_REDIRECT_URL: str = os.getenv(
+        "GOOGLE_OAUTH_DEFAULT_REDIRECT_URL",
+        f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/login",
+    )
+    GOOGLE_OAUTH_ALLOWED_REDIRECT_URLS: str = os.getenv("GOOGLE_OAUTH_ALLOWED_REDIRECT_URLS", "")
 
     model_config = SettingsConfigDict(
         env_file=".env",

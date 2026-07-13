@@ -71,7 +71,7 @@ def checkpointer():
 @patch("app.services.generation.nodes.retrieve_context")
 async def test_full_happy_path_needs_image(mock_retrieve, mock_gen_image, mock_get_model, workspace, checkpointer):
     mock_retrieve.return_value = []
-    mock_gen_image.return_value = "storage/test_img.jpeg"
+    mock_gen_image.return_value = "https://res.cloudinary.com/demo/image/upload/test.jpeg"
     
     # Mock LLM outputs
     def side_effect(purpose):
@@ -97,7 +97,7 @@ async def test_full_happy_path_needs_image(mock_retrieve, mock_gen_image, mock_g
     result = await graph.ainvoke(state, config=config)
     
     assert result["needs_image"] is True
-    assert result["image_url"] == "storage/test_img.jpeg"
+    assert result["image_url"] == "https://res.cloudinary.com/demo/image/upload/test.jpeg"
     assert result["reviewer_passed"] is True
     assert result["reviewer_score"] == 95
     assert result["post_id"] is not None

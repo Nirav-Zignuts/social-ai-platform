@@ -5,6 +5,7 @@ Authentication service business logic.
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
+from app.models import user_session
 from fastapi import HTTPException, Request
 from sqlalchemy.orm import Session
 
@@ -192,6 +193,29 @@ class AuthService:
             "token_type": "bearer",
         }
 
+    def create_oauth_session(
+        self,
+        user_id: UUID,
+        *,
+        auth_provider: AuthProvider,
+        fcm_token: str | None = None,
+    ) -> dict:
+        access_token = token_manager.create_access_token(subject=str(user_id))
+        refresh_token = token_manager.create_refresh_token(subject=str(user_id))
+        self._create_user_session(
+            user_id=user_id,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            fcm_token=fcm_token,
+            device_details=None,
+            auth_type=auth_provider,
+        )
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+        }
+
     def _create_user_session(
         self,
         user_id: UUID,
@@ -199,6 +223,7 @@ class AuthService:
         refresh_token: str,
         fcm_token: str | None = None,
         device_details: DeviceDetailsPayload | None = None,
+        auth_type: AuthProvider = AuthProvider.LOCAL,
     ) -> None:
         """
         Create a user session record.
@@ -218,7 +243,7 @@ class AuthService:
 
         self.session_repo.create_session(
             user_id=user_id,
-            auth_type=AuthProvider.LOCAL.value,
+            auth_type=auth_type.value,
             access_token=access_token,
             refresh_token=refresh_token,
             refresh_token_expires_at=refresh_token_expires_at,
@@ -300,6 +325,12 @@ class AuthService:
 
         # Create new access token
         access_token = token_manager.create_access_token(subject=user_id)
+        session = user_session.model.filter(user_session.model.refresh_token == refresh_token).first()
+        if not session:
+            raise InvalidTokenError(ErrorMessages.INVALID_TOKEN)
+        session.access_token = access_token
+        self.db.commit()
+        self.db.refresh(session)
 
         return {
             "access_token": access_token,

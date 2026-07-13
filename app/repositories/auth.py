@@ -40,6 +40,18 @@ class UserAuthProviderRepository(BaseRepository[UserAuthProvider]):
         result = self.db.execute(stmt)
         return result.scalar_one_or_none()
 
+    def get_by_provider_user_id(
+        self,
+        provider: AuthProvider,
+        provider_user_id: str,
+    ) -> UserAuthProvider | None:
+        stmt = select(UserAuthProvider).where(
+            (UserAuthProvider.provider == provider)
+            & (UserAuthProvider.provider_user_id == provider_user_id)
+        )
+        result = self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
     def create_auth_provider(
         self,
         user_id: UUID,

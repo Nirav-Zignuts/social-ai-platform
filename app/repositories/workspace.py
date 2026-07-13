@@ -27,6 +27,7 @@ class WorkspaceRepository(BaseRepository[Workspace]):
             self.model.id == workspace_id,
             self.model.owner_id == user_id,
         )
+        print(stmt)
         return self.db.execute(stmt).scalar_one_or_none()
 
 

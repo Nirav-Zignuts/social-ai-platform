@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -34,6 +36,8 @@ class UserRepository(BaseRepository[User]):
         full_name: str,
         avatar_url: str | None = None,
         is_active: bool = False,
+        status: UserStatus = UserStatus.PENDING,
+        email_verified_at: datetime | None = None,
         commit: bool = True,
     ) -> User:
         """
@@ -52,8 +56,9 @@ class UserRepository(BaseRepository[User]):
             email=email.lower(),
             full_name=full_name,
             avatar_url=avatar_url,
-            status=UserStatus.PENDING,
+            status=status,
             is_active=is_active,
+            email_verified_at=email_verified_at,
         )
         self.db.add(user)
         if commit:

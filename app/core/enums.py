@@ -35,3 +35,25 @@ class PublishingJobStatus(str, Enum):
     PUBLISHED = "PUBLISHED"
     FAILED = "FAILED"
     RETRYING = "RETRYING"
+
+
+class NotificationType(str, Enum):
+    POST_READY_FOR_REVIEW = "post_ready_for_review"
+    POST_APPROVED = "post_approved"
+    POST_REJECTED = "post_rejected"
+    POST_AUTO_APPROVED = "post_auto_approved"
+
+
+class NotificationChannel(str, Enum):
+    EMAIL = "email"
+    IN_APP = "in_app"
+
+
+class SocialProvider(str, Enum):
+    INSTAGRAM = "instagram"
+
+
+class ConnectedAccountStatus(str, Enum):
+    CONNECTED = "connected"
+    DISCONNECTED = "disconnected"
+    ERROR = "error"

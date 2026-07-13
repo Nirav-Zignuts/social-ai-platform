@@ -8,6 +8,20 @@ from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY
 
 from app.common.messages import ErrorMessage, ErrorMessages
 from app.common.responses import ErrorResponse
+from app.integrations.google.exceptions import (
+    GoogleAPIError,
+    GoogleIntegrationError,
+    GoogleOAuthStateExpired,
+    GoogleOAuthStateInvalid,
+)
+from app.integrations.meta.exceptions import (
+    FacebookPageNotFound,
+    InstagramAccountNotFound,
+    MetaAPIError,
+    MetaIntegrationError,
+    OAuthStateExpired,
+    OAuthStateInvalid,
+)
 
 
 def _format_error(err: Dict[str, Any]) -> Dict[str, Any]:
@@ -67,3 +81,37 @@ def http_exception_handler(_request: Request, exc: StarletteHTTPException) -> JS
     detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
 
     return _error_response(status_code=exc.status_code, message=detail)
+
+
+async def meta_integration_exception_handler(
+    _request: Request,
+    exc: MetaIntegrationError,
+) -> JSONResponse:
+    if isinstance(exc, OAuthStateExpired):
+        status_code = 400
+    elif isinstance(exc, OAuthStateInvalid):
+        status_code = 400
+    elif isinstance(exc, InstagramAccountNotFound):
+        status_code = 404
+    elif isinstance(exc, FacebookPageNotFound):
+        status_code = 404
+    elif isinstance(exc, MetaAPIError):
+        status_code = 502
+    else:
+        status_code = 400
+
+    return _error_response(status_code=status_code, message=str(exc))
+
+
+async def google_integration_exception_handler(
+    _request: Request,
+    exc: GoogleIntegrationError,
+) -> JSONResponse:
+    if isinstance(exc, (GoogleOAuthStateExpired, GoogleOAuthStateInvalid)):
+        status_code = 400
+    elif isinstance(exc, GoogleAPIError):
+        status_code = 502
+    else:
+        status_code = 400
+
+    return _error_response(status_code=status_code, message=str(exc))

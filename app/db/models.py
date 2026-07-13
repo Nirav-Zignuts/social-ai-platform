@@ -16,3 +16,5 @@ from app.models.ai_configuration import AIConfiguration
 from app.models.generated_post import GeneratedPost
 from app.models.post_review import PostReview
 from app.models.publishing_job import PublishingJob
+from app.models.notification import Notification
+from app.models.connected_account import ConnectedAccount
