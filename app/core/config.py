@@ -65,11 +65,11 @@ class Settings(BaseSettings):
     RSA_PRIVATE_KEY: str = os.getenv("RSA_PRIVATE_KEY", "")
     RSA_PUBLIC_KEY: str = os.getenv("RSA_PUBLIC_KEY", "")
 
-    # Resend HTTP API (use this on Render — SMTP ports are blocked on Free)
-    RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
+    # Brevo HTTP API (use this on Render — SMTP ports are blocked on Free)
+    BREVO_API_KEY: str = os.getenv("BREVO_API_KEY", "")
     EMAIL_FROM: str = os.getenv(
         "EMAIL_FROM",
-        "AI Marketing Platform <onboarding@resend.dev>",
+        "AI Marketing Platform <noreply@yourdomain.com>",
     )
 
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")

@@ -1,24 +1,40 @@
 """
-Email sending via Resend HTTP API (works on Render Free; SMTP is blocked there).
+Email sending via Brevo HTTP API (works on Render Free; SMTP ports are blocked there).
 """
 
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional
 
-import resend
+import httpx
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+BREVO_SEND_URL = "https://api.brevo.com/v3/smtp/email"
+_FROM_RE = re.compile(r"^(.*?)\s*<([^>]+)>\s*$")
+
+
+def _parse_from_address(value: str) -> tuple[str, str]:
+    """Parse 'Name <email@x.com>' or bare email into (name, email)."""
+    raw = (value or "").strip()
+    if not raw:
+        return "", ""
+    match = _FROM_RE.match(raw)
+    if match:
+        name = match.group(1).strip().strip('"') or "AI Marketing Platform"
+        return name, match.group(2).strip()
+    return "AI Marketing Platform", raw
+
 
 class EmailService:
-    """Service responsible for sending email messages through Resend."""
+    """Service responsible for sending email messages through Brevo."""
 
     def __init__(self) -> None:
-        self.api_key = (settings.RESEND_API_KEY or "").strip()
+        self.api_key = (settings.BREVO_API_KEY or "").strip()
         self.email_from = (settings.EMAIL_FROM or "").strip()
         self.frontend_url = settings.FRONTEND_URL
 
@@ -33,37 +49,61 @@ class EmailService:
         html_body: str,
         text_body: Optional[str] = None,
     ) -> None:
-        """Send an email using Resend."""
+        """Send an email using Brevo transactional API."""
         if not self.api_key:
             raise RuntimeError(
-                "RESEND_API_KEY is not configured. Add it in Render/env before sending email."
+                "BREVO_API_KEY is not configured. Add it in Render/env before sending email."
             )
         if not self.email_from:
             raise RuntimeError(
-                "EMAIL_FROM is not configured. Use a Resend-verified sender, "
-                "e.g. 'AI Platform <onboarding@resend.dev>' for testing."
+                "EMAIL_FROM is not configured. Use a Brevo-verified sender, "
+                "e.g. 'AI Marketing Platform <noreply@yourdomain.com>'."
             )
 
-        resend.api_key = self.api_key
-        params: resend.Emails.SendParams = {
-            "from": self.email_from,
-            "to": [recipient],
+        sender_name, sender_email = _parse_from_address(self.email_from)
+        if not sender_email:
+            raise RuntimeError(
+                "EMAIL_FROM must include a valid email, e.g. "
+                "'AI Marketing Platform <noreply@yourdomain.com>'."
+            )
+
+        payload: dict = {
+            "sender": {"name": sender_name, "email": sender_email},
+            "to": [{"email": recipient}],
             "subject": subject,
-            "html": html_body,
+            "htmlContent": html_body,
         }
         if text_body:
-            params["text"] = text_body
+            payload["textContent"] = text_body
 
         try:
-            result = resend.Emails.send(params)
-            email_id = result.get("id") if isinstance(result, dict) else getattr(result, "id", None)
+            with httpx.Client(timeout=30.0) as client:
+                response = client.post(
+                    BREVO_SEND_URL,
+                    headers={
+                        "api-key": self.api_key,
+                        "accept": "application/json",
+                        "content-type": "application/json",
+                    },
+                    json=payload,
+                )
+            if response.status_code >= 400:
+                logger.error(
+                    "Brevo send failed status=%s body=%s",
+                    response.status_code,
+                    response.text,
+                )
+                response.raise_for_status()
+
+            data = response.json() if response.content else {}
+            message_id = data.get("messageId")
             logger.info(
-                "Email sent via Resend to %s (id=%s)",
+                "Email sent via Brevo to %s (messageId=%s)",
                 recipient,
-                email_id,
+                message_id,
             )
         except Exception:
-            logger.exception("Failed to send email to %s via Resend", recipient)
+            logger.exception("Failed to send email to %s via Brevo", recipient)
             raise
 
     def send_verification_email(
