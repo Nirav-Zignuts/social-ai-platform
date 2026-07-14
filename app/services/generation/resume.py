@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 from psycopg_pool import AsyncConnectionPool
@@ -23,34 +22,37 @@ async def _resume_graph_for_regenerate_async(
     feedback: str,
     checkpointer=None,
 ):
-  graph = get_compiled_graph(checkpointer=checkpointer)
-  config = {"configurable": {"thread_id": generation_cycle_id}}
+    graph = get_compiled_graph(checkpointer=checkpointer)
+    config = {"configurable": {"thread_id": generation_cycle_id}}
 
-  graph.update_state(
-      config,
-      {
-          "reviewer_notes": f"Human reviewer feedback: {feedback}",
-          "reviewer_passed": False,
-      },
-      as_node="writer",
-  )
+    # AsyncPostgresSaver requires aupdate_state (not sync update_state).
+    await graph.aupdate_state(
+        config,
+        {
+            "reviewer_notes": f"Human reviewer feedback: {feedback}",
+            "reviewer_passed": False,
+        },
+        as_node="writer",
+    )
 
-  result = await graph.ainvoke(None, config=config)
-  return result
+    return await graph.ainvoke(None, config=config)
 
 
-async def _resume_with_postgres_checkpointer(generation_cycle_id: str, feedback: str):
+async def resume_generation_for_regenerate(generation_cycle_id: str, feedback: str):
+    """
+    Resume the LangGraph thread for a human-triggered regeneration.
+
+    Must be awaited from the FastAPI event loop — do not wrap with asyncio.run()
+    (that breaks when called from an already-running async route).
+    """
+    logger.info("Resuming generation cycle %s with human feedback", generation_cycle_id)
     async with AsyncConnectionPool(
         conninfo=_db_url(), max_size=5, kwargs={"autocommit": True}
     ) as pool:
         checkpointer = AsyncPostgresSaver(pool)
         await checkpointer.setup()
         return await _resume_graph_for_regenerate_async(
-            generation_cycle_id, feedback, checkpointer=checkpointer
+            generation_cycle_id,
+            feedback,
+            checkpointer=checkpointer,
         )
-
-
-def resume_generation_for_regenerate(generation_cycle_id: str, feedback: str):
-    """Resume the LangGraph thread for a human-triggered regeneration."""
-    logger.info("Resuming generation cycle %s with human feedback", generation_cycle_id)
-    return asyncio.run(_resume_with_postgres_checkpointer(generation_cycle_id, feedback))

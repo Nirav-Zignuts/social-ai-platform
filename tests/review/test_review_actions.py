@@ -1,6 +1,6 @@
 import uuid
 from datetime import time
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -114,16 +114,20 @@ def test_reject_is_terminal(db, workspace, user, post):
     assert review.feedback == "Not on brand"
 
 
-@patch("app.services.post_review_service.resume_generation_for_regenerate")
+@patch("app.services.post_review_service.resume_generation_for_regenerate", new_callable=AsyncMock)
 def test_regenerate_calls_graph_resume(mock_resume, db, workspace, user, post):
+    import asyncio
+
     mock_resume.return_value = None
     service = PostReviewService(db)
 
-    result = service.regenerate(
-        workspace.id, post.id, user.id, feedback="Make it shorter"
+    result = asyncio.run(
+        service.regenerate(
+            workspace.id, post.id, user.id, feedback="Make it shorter"
+        )
     )
 
-    mock_resume.assert_called_once_with(
+    mock_resume.assert_awaited_once_with(
         str(post.generation_cycle_id), "Make it shorter"
     )
     assert result.id == post.id
@@ -134,12 +138,16 @@ def test_regenerate_calls_graph_resume(mock_resume, db, workspace, user, post):
 
 
 def test_regenerate_cap_rejected(db, workspace, user, post):
+    import asyncio
+
     post.regenerate_count = MAX_TOTAL_REGENERATIONS
     db.commit()
 
     service = PostReviewService(db)
     with pytest.raises(HTTPException) as exc:
-        service.regenerate(workspace.id, post.id, user.id, feedback="Try again")
+        asyncio.run(
+            service.regenerate(workspace.id, post.id, user.id, feedback="Try again")
+        )
 
     assert exc.value.status_code == 400
     assert "edit the post manually" in exc.value.detail.lower()

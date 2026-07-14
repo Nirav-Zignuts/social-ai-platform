@@ -99,7 +99,7 @@ class PostReviewService:
         self.db.refresh(post)
         return post
 
-    def regenerate(
+    async def regenerate(
         self,
         workspace_id: UUID,
         post_id: UUID,
@@ -121,7 +121,7 @@ class PostReviewService:
         self._insert_review(post, user_id, PostReviewAction.REGENERATE, feedback=feedback)
         self.db.commit()
 
-        resume_generation_for_regenerate(str(post.generation_cycle_id), feedback)
+        await resume_generation_for_regenerate(str(post.generation_cycle_id), feedback)
 
         self.db.expire(post)
         self.db.refresh(post)

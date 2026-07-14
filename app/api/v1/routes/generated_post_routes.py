@@ -158,7 +158,7 @@ async def regenerate_post(
 ):
     try:
         service = PostReviewService(db)
-        post = service.regenerate(
+        post = await service.regenerate(
             workspace_id, post_id, _user_id(current_user), feedback=payload.feedback
         )
         return SuccessMessage(
@@ -169,6 +169,9 @@ async def regenerate_post(
     except HTTPException as e:
         return ErrorMessage(message=e.detail, code=e.status_code)
     except Exception as e:
+        import traceback
+
+        traceback.print_exc()
         return ErrorMessage(
             message=ErrorMessages.SERVER_ERROR,
             code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
