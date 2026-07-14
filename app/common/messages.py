@@ -76,6 +76,8 @@ class ErrorMessages:
     USER_NOT_FOUND = "User not found"
     EMAIL_ALREADY_EXISTS = "Email already exists"
     INVALID_TOKEN = "Invalid or expired token"
+    INVALID_CRON_SECRET = "Invalid or missing cron secret"
+    SESSION_NOT_FOUND = "Session not found or logged out"
     INVALID_ACTIVATION_TOKEN = "Invalid activation token"
     EMAIL_ALREADY_VERIFIED = "Email is already verified"
     EMAIL_NOT_VERIFIED = "Email address is not verified"
@@ -108,3 +110,4 @@ class WorkspaceMessages:
     DOCUMENT_UPLOADED = "Document uploaded successfully"
     DOCUMENTS_RETRIEVED = "Documents retrieved successfully"
     DOCUMENT_DELETED = "Document deleted successfully"
+    POST_DELETED = "Generated post deleted successfully"

@@ -29,6 +29,60 @@ class MetaInstagramProfile(BaseModel):
     id: str
     username: str | None = None
     name: str | None = None
+    biography: str | None = None
+    profile_picture_url: str | None = None
+    followers_count: int | None = None
+    follows_count: int | None = None
+    media_count: int | None = None
+
+
+class MetaMediaDetails(BaseModel):
+    id: str
+    caption: str | None = None
+    media_type: str | None = None
+    media_url: str | None = None
+    permalink: str | None = None
+    timestamp: str | None = None
+    like_count: int | None = None
+    comments_count: int | None = None
+
+
+class MetaInsightMetric(BaseModel):
+    name: str
+    period: str | None = None
+    title: str | None = None
+    description: str | None = None
+    values: list[dict[str, Any]] = Field(default_factory=list)
+    total_value: dict[str, Any] | None = None
+
+    def extract_value(self) -> int | None:
+        if self.total_value and isinstance(self.total_value.get("value"), int):
+            return self.total_value["value"]
+        if self.values:
+            raw = self.values[0].get("value")
+            if isinstance(raw, int):
+                return raw
+        return None
+
+
+class MetaMediaInsightsResponse(BaseModel):
+    data: list[MetaInsightMetric] = Field(default_factory=list)
+
+    def as_map(self) -> dict[str, int | None]:
+        return {metric.name: metric.extract_value() for metric in self.data}
+
+
+class MetaMediaContainerResponse(BaseModel):
+    id: str
+
+
+class MetaContainerStatusResponse(BaseModel):
+    status_code: str | None = None
+    status: str | None = None
+
+
+class MetaPublishResponse(BaseModel):
+    id: str
 
 
 class MetaGraphErrorBody(BaseModel):

@@ -15,6 +15,10 @@ class Settings(BaseSettings):
 
     SECRET_KEY: str
 
+    # Shared secret for cron-job.org → /internal/* routes (header: X-Cron-Secret).
+    # Separate from JWT SECRET_KEY — do not reuse the signing key in external cron.
+    CRON_SECRET: str = os.getenv("CRON_SECRET", "")
+
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
@@ -39,12 +43,16 @@ class Settings(BaseSettings):
     META_GRAPH_VERSION: str = os.getenv("META_GRAPH_VERSION", "v21.0")
     META_SCOPES: str = os.getenv(
         "META_SCOPES",
-        "instagram_basic,pages_show_list,pages_read_engagement",
+        "instagram_basic,instagram_content_publish,instagram_manage_insights,"
+        "pages_show_list,pages_read_engagement",
     )
 
     CLOUDINARY_CLOUD_NAME: str = os.getenv("CLOUDINARY_CLOUD_NAME", "")
     CLOUDINARY_API_KEY: str = os.getenv("CLOUDINARY_API_KEY", "")
     CLOUDINARY_API_SECRET: str = os.getenv("CLOUDINARY_API_SECRET", "")
+
+    # Used if serving local media; generated images currently use Cloudinary HTTPS URLs.
+    PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
 
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")

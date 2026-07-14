@@ -1,16 +1,18 @@
-
+import hmac
 from typing import Any
-from urllib import request
 
-from fastapi import HTTPException, Request,status
+from fastapi import HTTPException, Request, status
 import jwt
 
 from app.common.messages import ErrorMessages
+from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.user_session import UserSession
 from app.security.token import TokenManager
 
 token_manager = TokenManager()
+
+CRON_SECRET_HEADER = "X-Cron-Secret"
 
 def get_token_from_header(request):
     auth_header = request.headers.get("Authorization")
@@ -48,7 +50,6 @@ def _session_exists_for_token(db, token: str) -> bool:
 
 
 def require_auth(request: Request) -> dict[str, Any]:
-    
     try:
         token = get_token_from_header(request)
         user_id = verify_access_token(token)
@@ -58,19 +59,39 @@ def require_auth(request: Request) -> dict[str, Any]:
                 detail=ErrorMessages.INVALID_TOKEN,
             )
         db = SessionLocal()
-        if not _session_exists_for_token(db, token):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=ErrorMessages.SESSION_NOT_FOUND,
-            )
+        try:
+            if not _session_exists_for_token(db, token):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=ErrorMessages.SESSION_NOT_FOUND,
+                )
+        finally:
+            db.close()
         return {"user_id": user_id}
     except HTTPException as e:
         raise HTTPException(
             status_code=e.status_code,
             detail=e.detail,
         )
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ErrorMessages.INVALID_TOKEN,
+        )
+
+
+def require_cron_secret(request: Request) -> None:
+    """Authorize internal cron endpoints via X-Cron-Secret header."""
+    expected = (settings.CRON_SECRET or "").strip()
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Cron secret is not configured",
+        )
+
+    provided = (request.headers.get(CRON_SECRET_HEADER) or "").strip()
+    if not provided or not hmac.compare_digest(provided, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ErrorMessages.INVALID_CRON_SECRET,
         )

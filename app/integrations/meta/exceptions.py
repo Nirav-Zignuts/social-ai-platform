@@ -28,3 +28,15 @@ class InstagramAccountNotFound(MetaIntegrationError):
 
 class FacebookPageNotFound(MetaIntegrationError):
     """No Facebook Pages found for the authorized user."""
+
+
+class InstagramTokenExpiredError(MetaIntegrationError):
+    """Connected Instagram access token is missing or expired."""
+
+
+class InstagramPublishError(MetaIntegrationError):
+    """Retryable Instagram publish failure."""
+
+
+class InstagramContainerTimeoutError(InstagramPublishError):
+    """Media container did not reach FINISHED within the polling window."""

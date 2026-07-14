@@ -26,6 +26,16 @@ class ConnectedAccountResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class InstagramAccountMetrics(BaseModel):
+    followers_count: int | None = None
+    follows_count: int | None = None
+    media_count: int | None = None
+    biography: str | None = None
+    profile_picture_url: str | None = None
+    username: str | None = None
+    name: str | None = None
+
+
 class InstagramCallbackResponse(BaseModel):
     connected_account: ConnectedAccountResponse
     message: str = "Instagram Business Account connected successfully."
@@ -34,3 +44,4 @@ class InstagramCallbackResponse(BaseModel):
 class InstagramConnectionStatusResponse(BaseModel):
     connected: bool
     account: ConnectedAccountResponse | None = None
+    metrics: InstagramAccountMetrics | None = None

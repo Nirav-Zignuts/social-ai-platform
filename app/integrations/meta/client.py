@@ -25,9 +25,10 @@ class MetaGraphClient:
         method: str,
         url: str,
         params: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.request(method, url, params=params)
+            response = await client.request(method, url, params=params, data=data)
 
         try:
             body = response.json()
@@ -48,6 +49,16 @@ class MetaGraphClient:
     async def get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         url = path if path.startswith("http") else f"{self.graph_base_url}/{path.lstrip('/')}"
         return await self._request("GET", url, params=params)
+
+    async def post(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        url = path if path.startswith("http") else f"{self.graph_base_url}/{path.lstrip('/')}"
+        return await self._request("POST", url, params=params, data=data)
 
     def build_oauth_authorization_url(self, state: str, scopes: str) -> str:
         query = urlencode(
@@ -115,6 +126,85 @@ class MetaGraphClient:
             instagram_business_account_id,
             params={
                 "access_token": access_token,
-                "fields": "id,username,name",
+                "fields": (
+                    "id,username,name,biography,profile_picture_url,"
+                    "followers_count,follows_count,media_count"
+                ),
+            },
+        )
+
+    async def get_media(
+        self,
+        media_id: str,
+        access_token: str,
+    ) -> dict[str, Any]:
+        return await self.get(
+            media_id,
+            params={
+                "access_token": access_token,
+                "fields": (
+                    "id,caption,media_type,media_url,permalink,timestamp,"
+                    "like_count,comments_count"
+                ),
+            },
+        )
+
+    async def get_media_insights(
+        self,
+        media_id: str,
+        access_token: str,
+        *,
+        metrics: str,
+    ) -> dict[str, Any]:
+        return await self.get(
+            f"{media_id}/insights",
+            params={
+                "metric": metrics,
+                "access_token": access_token,
+            },
+        )
+
+    async def create_media_container(
+        self,
+        ig_user_id: str,
+        *,
+        image_url: str,
+        caption: str,
+        access_token: str,
+    ) -> dict[str, Any]:
+        return await self.post(
+            f"{ig_user_id}/media",
+            params={
+                "image_url": image_url,
+                "caption": caption,
+                "access_token": access_token,
+            },
+        )
+
+    async def get_container_status(
+        self,
+        container_id: str,
+        access_token: str,
+    ) -> dict[str, Any]:
+        return await self.get(
+            container_id,
+            params={
+                "fields": "status_code,status",
+                "access_token": access_token,
+            },
+        )
+
+    async def publish_media(
+        self,
+        ig_user_id: str,
+        *,
+        creation_id: str,
+        access_token: str,
+    ) -> dict[str, Any]:
+        return await self.post(
+            f"{ig_user_id}/media_publish",
+            params={
+                "creation_id": creation_id,
+                "access_token": access_token,
             },
         )

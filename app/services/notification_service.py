@@ -23,6 +23,13 @@ NOTIFICATION_MESSAGES = {
         "A new post was auto-approved and scheduled, no action needed — "
         "review it anytime before it publishes."
     ),
+    NotificationType.INSTAGRAM_TOKEN_EXPIRED: (
+        "Your Instagram connection has expired. Reconnect to resume publishing."
+    ),
+    NotificationType.POST_PUBLISH_FAILED: (
+        "A scheduled post failed to publish after multiple attempts."
+    ),
+    NotificationType.POST_PUBLISH_SUCCEEDED: "Your scheduled post was published to Instagram.",
 }
 
 EMAIL_SUBJECTS = {
@@ -30,24 +37,41 @@ EMAIL_SUBJECTS = {
     NotificationType.POST_APPROVED: "Your post has been approved",
     NotificationType.POST_REJECTED: "Your post has been rejected",
     NotificationType.POST_AUTO_APPROVED: "A new post was auto-approved and scheduled",
+    NotificationType.INSTAGRAM_TOKEN_EXPIRED: "Reconnect Instagram to resume publishing",
+    NotificationType.POST_PUBLISH_FAILED: "A scheduled post failed to publish",
+    NotificationType.POST_PUBLISH_SUCCEEDED: "Your post was published",
 }
 
 
 def build_review_link(workspace_id: UUID, post_id: UUID) -> str:
     base = settings.FRONTEND_URL.rstrip("/")
-    return f"{base}/workspaces/{workspace_id}/posts/{post_id}/review"
+    return f"{base}/workspaces/{workspace_id}/posts/{post_id}"
+
+
+def build_instagram_settings_link(workspace_id: UUID) -> str:
+    base = settings.FRONTEND_URL.rstrip("/")
+    return f"{base}/workspaces/{workspace_id}/settings"
 
 
 def _build_payload(
     workspace_id: UUID,
     post_id: UUID | None,
     notification_type: NotificationType,
+    extra: dict | None = None,
+    *,
+    workspace_name: str | None = None,
 ) -> dict:
     payload = {
         "message": NOTIFICATION_MESSAGES[notification_type],
     }
-    if post_id is not None:
+    if workspace_name:
+        payload["workspace_name"] = workspace_name
+    if notification_type == NotificationType.INSTAGRAM_TOKEN_EXPIRED:
+        payload["settings_link"] = build_instagram_settings_link(workspace_id)
+    elif post_id is not None:
         payload["review_link"] = build_review_link(workspace_id, post_id)
+    if extra:
+        payload.update(extra)
     return payload
 
 
@@ -58,17 +82,27 @@ def create_notification(
     notification_type: NotificationType,
     channel: NotificationChannel,
     db: Session | None = None,
+    extra_payload: dict | None = None,
 ) -> Notification:
     owns_session = db is None
     session = db or SessionLocal()
     try:
+        workspace = (
+            session.query(Workspace).filter(Workspace.id == workspace_id).first()
+        )
         notification = Notification(
             user_id=user_id,
             workspace_id=workspace_id,
             post_id=post_id,
             type=notification_type.value,
             channel=channel.value,
-            payload=_build_payload(workspace_id, post_id, notification_type),
+            payload=_build_payload(
+                workspace_id,
+                post_id,
+                notification_type,
+                extra=extra_payload,
+                workspace_name=workspace.name if workspace else None,
+            ),
         )
         session.add(notification)
         session.commit()
@@ -93,15 +127,26 @@ def send_email_notification(notification: Notification, db: Session | None = Non
             )
             return
 
-        payload = notification.payload or {}
+        payload = dict(notification.payload or {})
+        if "workspace_name" not in payload:
+            workspace = (
+                session.query(Workspace)
+                .filter(Workspace.id == notification.workspace_id)
+                .first()
+            )
+            if workspace:
+                payload["workspace_name"] = workspace.name
+
         message = payload.get("message", "You have a new notification.")
-        review_link = payload.get("review_link")
+        review_link = payload.get("review_link") or payload.get("settings_link")
 
         try:
             notification_type = NotificationType(notification.type)
             subject = EMAIL_SUBJECTS.get(notification_type, "New notification")
+            type_value = notification_type.value
         except ValueError:
             subject = "New notification"
+            type_value = notification.type
 
         EmailService().send_post_notification_email(
             recipient=user.email,
@@ -109,6 +154,8 @@ def send_email_notification(notification: Notification, db: Session | None = Non
             subject=subject,
             message=message,
             review_link=review_link,
+            notification_type=type_value,
+            payload=payload,
         )
 
         notification.sent_at = datetime.now(timezone.utc)
@@ -193,3 +240,80 @@ def notify_post_approved(post_id: str, db: Session) -> None:
         channel=NotificationChannel.IN_APP,
         db=db,
     )
+
+
+def notify_token_expired(workspace_id: str) -> None:
+    with SessionLocal() as db:
+        workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
+        if not workspace:
+            return
+
+        create_notification(
+            user_id=workspace.owner_id,
+            workspace_id=workspace.id,
+            post_id=None,
+            notification_type=NotificationType.INSTAGRAM_TOKEN_EXPIRED,
+            channel=NotificationChannel.IN_APP,
+            db=db,
+        )
+        email_notification = create_notification(
+            user_id=workspace.owner_id,
+            workspace_id=workspace.id,
+            post_id=None,
+            notification_type=NotificationType.INSTAGRAM_TOKEN_EXPIRED,
+            channel=NotificationChannel.EMAIL,
+            db=db,
+        )
+        send_email_notification(email_notification, db=db)
+
+
+def notify_publish_failed(post_id: str, error_reason: str) -> None:
+    with SessionLocal() as db:
+        post = db.query(GeneratedPost).filter(GeneratedPost.id == post_id).first()
+        if not post:
+            return
+
+        workspace = db.query(Workspace).filter(Workspace.id == post.workspace_id).first()
+        if not workspace:
+            return
+
+        extra = {"error_reason": error_reason}
+        create_notification(
+            user_id=workspace.owner_id,
+            workspace_id=workspace.id,
+            post_id=post.id,
+            notification_type=NotificationType.POST_PUBLISH_FAILED,
+            channel=NotificationChannel.IN_APP,
+            db=db,
+            extra_payload=extra,
+        )
+        email_notification = create_notification(
+            user_id=workspace.owner_id,
+            workspace_id=workspace.id,
+            post_id=post.id,
+            notification_type=NotificationType.POST_PUBLISH_FAILED,
+            channel=NotificationChannel.EMAIL,
+            db=db,
+            extra_payload=extra,
+        )
+        send_email_notification(email_notification, db=db)
+
+
+def notify_publish_succeeded(post_id: str) -> None:
+    with SessionLocal() as db:
+        post = db.query(GeneratedPost).filter(GeneratedPost.id == post_id).first()
+        if not post:
+            return
+
+        workspace = db.query(Workspace).filter(Workspace.id == post.workspace_id).first()
+        if not workspace:
+            return
+
+        create_notification(
+            user_id=workspace.owner_id,
+            workspace_id=workspace.id,
+            post_id=post.id,
+            notification_type=NotificationType.POST_PUBLISH_SUCCEEDED,
+            channel=NotificationChannel.IN_APP,
+            db=db,
+        )

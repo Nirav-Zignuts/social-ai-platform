@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import date, datetime, time
 from typing import Optional
 from uuid import UUID
 
@@ -9,6 +9,7 @@ class WorkspaceCreate(BaseModel):
     name: str = Field(..., max_length=255)
     timezone: Optional[str] = Field("UTC", max_length=50)
     preferred_post_time: Optional[time] = None
+    generation_lead_hours: Optional[int] = Field(12, ge=1, le=48)
     require_human_approval: Optional[bool] = True
 
 
@@ -16,6 +17,7 @@ class WorkspaceUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=255)
     timezone: Optional[str] = Field(None, max_length=50)
     preferred_post_time: Optional[time] = None
+    generation_lead_hours: Optional[int] = Field(None, ge=1, le=48)
     require_human_approval: Optional[bool] = None
 
 
@@ -26,6 +28,8 @@ class WorkspaceResponse(BaseModel):
     slug: str
     timezone: str
     preferred_post_time: Optional[time]
+    generation_lead_hours: int
+    last_generation_date: Optional[date]
     require_human_approval: bool
     onboarding_status: str
     status: str

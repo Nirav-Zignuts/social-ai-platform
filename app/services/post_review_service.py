@@ -35,6 +35,7 @@ class PostReviewService:
             .filter(
                 GeneratedPost.id == post_id,
                 GeneratedPost.workspace_id == workspace_id,
+                GeneratedPost.is_deleted.is_(False),
             )
             .first()
         )

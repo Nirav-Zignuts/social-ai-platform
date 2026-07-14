@@ -42,6 +42,9 @@ class NotificationType(str, Enum):
     POST_APPROVED = "post_approved"
     POST_REJECTED = "post_rejected"
     POST_AUTO_APPROVED = "post_auto_approved"
+    INSTAGRAM_TOKEN_EXPIRED = "instagram_token_expired"
+    POST_PUBLISH_FAILED = "post_publish_failed"
+    POST_PUBLISH_SUCCEEDED = "post_publish_succeeded"
 
 
 class NotificationChannel(str, Enum):

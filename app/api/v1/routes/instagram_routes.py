@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.schemas.instagram_schema import (
     ConnectedAccountResponse,
+    InstagramAccountMetrics,
     InstagramConnectResponse,
     InstagramConnectionStatusResponse,
 )
@@ -42,11 +43,13 @@ async def get_instagram_connection(
     current_user=Depends(require_auth),
 ):
     try:
-        result = service.get_connection(workspace_id, _user_id(current_user))
+        result = await service.get_connection(workspace_id, _user_id(current_user))
         account = result["account"]
+        metrics = result.get("metrics")
         payload = InstagramConnectionStatusResponse(
             connected=result["connected"],
             account=ConnectedAccountResponse.model_validate(account) if account else None,
+            metrics=InstagramAccountMetrics.model_validate(metrics) if metrics else None,
         )
         return SuccessMessage(
             message="Instagram connection retrieved successfully",

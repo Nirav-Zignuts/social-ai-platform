@@ -56,14 +56,13 @@ class EmailService:
         return smtp
 
     def send_email(
-    self,
-    recipient: str,
-    subject: str,
-    html_body: str,
-    text_body: Optional[str] = None,
-) -> None:
+        self,
+        recipient: str,
+        subject: str,
+        html_body: str,
+        text_body: Optional[str] = None,
+    ) -> None:
         """Send an email using SMTP."""
-
         message = EmailMessage()
         message["Subject"] = subject
         message["From"] = self.email_from
@@ -74,7 +73,6 @@ class EmailService:
         context = ssl.create_default_context()
 
         try:
-            # SSL (recommended for Gmail - port 465)
             if self.smtp_port == 465:
                 with smtplib.SMTP_SSL(
                     self.smtp_host,
@@ -83,19 +81,15 @@ class EmailService:
                 ) as smtp:
                     smtp.login(self.smtp_username, self.smtp_password)
                     smtp.send_message(message)
-
-            # STARTTLS (port 587)
             else:
                 with smtplib.SMTP(self.smtp_host, self.smtp_port) as smtp:
                     smtp.ehlo()
                     smtp.starttls(context=context)
                     smtp.ehlo()
-
                     smtp.login(self.smtp_username, self.smtp_password)
                     smtp.send_message(message)
 
             logger.info("Email sent successfully to %s", recipient)
-
         except Exception:
             logger.exception("Failed to send email to %s", recipient)
             raise
@@ -107,20 +101,18 @@ class EmailService:
         verification_link: str,
     ) -> None:
         """Send the email verification message."""
-        subject = "Verify your email address"
-        text_body = (
-            f"Hi {full_name},\n\n"
-            "Please verify your email address by clicking the link below:\n"
-            f"{verification_link}\n\n"
-            "If you did not request this, please ignore this email."
+        from app.services.email_templates import verification_email
+
+        rendered = verification_email(
+            full_name=full_name,
+            verification_link=verification_link,
         )
-        html_body = (
-            f"<p>Hi {full_name},</p>"
-            f"<p>Please verify your email address by clicking the link below:</p>"
-            f"<p><a href=\"{verification_link}\">Verify email</a></p>"
-            "<p>If you did not request this, please ignore this email.</p>"
+        self.send_email(
+            recipient,
+            rendered.subject,
+            rendered.html_body,
+            rendered.text_body,
         )
-        self.send_email(recipient, subject, html_body, text_body)
 
     def send_post_notification_email(
         self,
@@ -129,16 +121,43 @@ class EmailService:
         subject: str,
         message: str,
         review_link: str | None = None,
+        *,
+        notification_type: str | None = None,
+        payload: dict | None = None,
     ) -> None:
-        """Send a post-generation or review notification email."""
-        text_body = f"Hi {full_name},\n\n{message}\n"
-        html_body = f"<p>Hi {full_name},</p><p>{message}</p>"
+        """Send a product notification email using branded templates."""
+        from app.services.email_templates import (
+            generic_notification_email,
+            render_notification_email,
+        )
 
-        if review_link:
-            text_body += f"\nReview your post: {review_link}\n"
-            html_body += f'<p><a href="{review_link}">Review your post</a></p>'
+        data = dict(payload or {})
+        data.setdefault("message", message)
+        if review_link and "review_link" not in data and "settings_link" not in data:
+            data["review_link"] = review_link
 
-        self.send_email(recipient, subject, html_body, text_body)
+        if notification_type:
+            rendered = render_notification_email(
+                notification_type=notification_type,
+                full_name=full_name,
+                payload=data,
+                subject=subject,
+            )
+        else:
+            rendered = generic_notification_email(
+                full_name=full_name,
+                subject=subject,
+                message=message,
+                cta_url=review_link,
+                cta_label="Open in app",
+            )
+
+        self.send_email(
+            recipient,
+            rendered.subject,
+            rendered.html_body,
+            rendered.text_body,
+        )
 
     def send_verification_email_safe(
         self,

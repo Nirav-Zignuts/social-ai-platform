@@ -42,3 +42,9 @@ class GeneratedPost(BaseEntity):
     workspace = relationship("Workspace", back_populates="generated_posts")
     reviews = relationship("PostReview", back_populates="post", cascade="all, delete-orphan")
     publishing_jobs = relationship("PublishingJob", back_populates="post", cascade="all, delete-orphan")
+    insight = relationship(
+        "PostInsight",
+        back_populates="post",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )

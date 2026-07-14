@@ -216,3 +216,21 @@ class UserSessionRepository(BaseRepository[UserSession]):
         print(f"Deleting session: {session.id}")
         self.db.delete(session)
         self.db.commit()
+
+    def get_session_by_refresh_token(self, refresh_token: str) -> UserSession | None:
+        """
+        Get session by refresh token.
+
+        Args:
+            refresh_token: The refresh token
+
+        Returns:
+            UserSession or None
+        """
+        stmt = select(UserSession).where(
+            (UserSession.refresh_token == refresh_token)
+            & (UserSession.is_active == True)
+            & (UserSession.is_deleted == False)
+        )
+        result = self.db.execute(stmt)
+        return result.scalar_one_or_none()

@@ -30,7 +30,8 @@ ONBOARDING_STATUS_ORDER = {
     "profile_added": 2,
     "knowledge_added": 3,
     "ai_configured": 4,
-    "completed": 5,
+    "instagram_connected": 5,
+    "completed": 6,
 }
 
 ALLOWED_FILE_TYPES = {
@@ -82,6 +83,7 @@ class WorkspaceService:
             slug=slug,
             timezone=payload.timezone,
             preferred_post_time=payload.preferred_post_time,
+            generation_lead_hours=payload.generation_lead_hours or 12,
             require_human_approval=payload.require_human_approval,
         )
         print(f"Creating workspace: {workspace.name}")  # Debugging line
@@ -101,6 +103,13 @@ class WorkspaceService:
         update_data = payload.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(workspace, key, value)
+        # Scheduling + AI + Instagram complete the wizard → mark onboarding done.
+        if (
+            workspace.preferred_post_time is not None
+            and ONBOARDING_STATUS_ORDER.get(workspace.onboarding_status, 0)
+            >= ONBOARDING_STATUS_ORDER["instagram_connected"]
+        ):
+            self._advance_onboarding_status(workspace, "completed")
         self.workspace_repo.update(workspace)
         return {"workspace": workspace}
 
@@ -141,6 +150,12 @@ class WorkspaceService:
             self.db.add(ai_config)
 
         self._advance_onboarding_status(workspace, "ai_configured")
+        if (
+            workspace.preferred_post_time is not None
+            and ONBOARDING_STATUS_ORDER.get(workspace.onboarding_status, 0)
+            >= ONBOARDING_STATUS_ORDER["instagram_connected"]
+        ):
+            self._advance_onboarding_status(workspace, "completed")
         self.db.commit()
         self.db.refresh(ai_config)
         return {"ai_configuration": ai_config}
@@ -201,10 +216,7 @@ class WorkspaceService:
             self.db.refresh(doc)
             print(f"Document uploaded: {doc.id}")
 
-            from app.knowledge.tasks import process_knowledge_document
-
-            process_knowledge_document.delay(str(doc.id))
-
+            # Indexing is scheduled by the route via FastAPI BackgroundTasks.
             return {"document": doc}
         except Exception as e:
             self.db.rollback()
@@ -245,7 +257,18 @@ class WorkspaceService:
     def trigger_generation_cycle(self, workspace_id: UUID, user_id: UUID) -> dict:
         print(f"Triggering generation cycle for workspace: {workspace_id}")
         workspace = self._get_workspace_or_404(workspace_id, user_id)
-        from app.services.generation_tasks import run_generation_cycle
-        print(f"Running generation cycle for workspace: {workspace.id}")
-        task = run_generation_cycle.delay(str(workspace.id))
-        return {"generation_cycle_id": task.id, "status": "queued"}
+
+        from zoneinfo import ZoneInfo
+        from datetime import datetime, timezone
+
+        tz = ZoneInfo(workspace.timezone or "UTC")
+        local_today = datetime.now(timezone.utc).astimezone(tz).date()
+        workspace.last_generation_date = local_today
+        self.workspace_repo.update(workspace)
+
+        # Actual run is scheduled by the route via FastAPI BackgroundTasks.
+        print(f"Queuing generation cycle for workspace: {workspace.id}")
+        return {
+            "workspace_id": str(workspace.id),
+            "status": "queued",
+        }

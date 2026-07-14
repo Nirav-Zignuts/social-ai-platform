@@ -11,8 +11,10 @@ from app.core.config import settings
 from app.core.enums import ConnectedAccountStatus, SocialProvider
 from app.integrations.meta.exceptions import MetaIntegrationError, OAuthStateExpired, OAuthStateInvalid
 from app.integrations.meta.service import MetaService
+from app.models.workspace import Workspace
 from app.repositories.social_accounts import ConnectedAccountRepository, OAuthStateRepository
 from app.repositories.workspace import WorkspaceRepository
+from app.services.workspace_service import ONBOARDING_STATUS_ORDER
 
 
 class InstagramOAuthService:
@@ -36,6 +38,34 @@ class InstagramOAuthService:
     def _fallback_redirect_url(self) -> str:
         return f"{settings.FRONTEND_URL.rstrip('/')}/workspaces"
 
+    def _advance_onboarding_status(self, workspace: Workspace, new_minimum_status: str) -> None:
+        current_weight = ONBOARDING_STATUS_ORDER.get(workspace.onboarding_status, 0)
+        new_weight = ONBOARDING_STATUS_ORDER.get(new_minimum_status, 0)
+        if new_weight > current_weight:
+            workspace.onboarding_status = new_minimum_status
+
+    def _mark_instagram_connected(self, workspace_id: UUID) -> None:
+        from app.repositories.workspace import AIConfigurationRepository
+
+        workspace = self.workspace_repo.get_by_id(workspace_id)
+        if not workspace:
+            return
+
+        self._advance_onboarding_status(workspace, "instagram_connected")
+
+        ai_config = AIConfigurationRepository(self.db).get_by_workspace_id(workspace_id)
+        if ai_config is not None and workspace.preferred_post_time is not None:
+            self._advance_onboarding_status(workspace, "completed")
+
+        self.db.add(workspace)
+        self.db.commit()
+        print(
+            "[instagram_oauth] onboarding_status ->",
+            workspace.onboarding_status,
+            "workspace_id=",
+            workspace_id,
+        )
+
     def _redirect_success(self, workspace_id: UUID) -> RedirectResponse:
         url = f"{self._settings_redirect_url(workspace_id)}?instagram=connected"
         print("[instagram_oauth] redirect success ->", url)
@@ -55,16 +85,52 @@ class InstagramOAuthService:
         print("[instagram_oauth] redirect error ->", url)
         return RedirectResponse(url=url, status_code=302)
 
-    def get_connection(self, workspace_id: UUID, user_id: UUID) -> dict:
+    async def get_connection(self, workspace_id: UUID, user_id: UUID) -> dict:
         self._get_owned_workspace(workspace_id, user_id)
         account = self.connected_account_repo.get_by_workspace_and_provider(
             workspace_id=workspace_id,
             provider=SocialProvider.INSTAGRAM.value,
         )
+        connected = (
+            account is not None
+            and account.status == ConnectedAccountStatus.CONNECTED.value
+        )
+        metrics = None
+        if (
+            connected
+            and account
+            and account.access_token
+            and account.instagram_business_account_id
+        ):
+            try:
+                profile = await self.meta_service.get_instagram_profile(
+                    account.instagram_business_account_id,
+                    account.access_token,
+                )
+                metrics = {
+                    "followers_count": profile.followers_count,
+                    "follows_count": profile.follows_count,
+                    "media_count": profile.media_count,
+                    "biography": profile.biography,
+                    "profile_picture_url": profile.profile_picture_url,
+                    "username": profile.username,
+                    "name": profile.name,
+                }
+                # Keep local username/display in sync when Meta returns fresher data.
+                if profile.username and profile.username != account.provider_username:
+                    account.provider_username = profile.username
+                if profile.name and profile.name != account.display_name:
+                    account.display_name = profile.name
+                self.db.add(account)
+                self.db.commit()
+                self.db.refresh(account)
+            except MetaIntegrationError as exc:
+                print("[instagram_oauth] failed to fetch account metrics:", exc)
+
         return {
-            "connected": account is not None
-            and account.status == ConnectedAccountStatus.CONNECTED.value,
+            "connected": connected,
             "account": account,
+            "metrics": metrics,
         }
 
     async def initiate_connect(self, workspace_id: UUID, user_id: UUID) -> dict:
@@ -154,6 +220,7 @@ class InstagramOAuthService:
             traceback.print_exc()
             return self._redirect_error(workspace_id, "Instagram connection failed.")
 
+        self._mark_instagram_connected(workspace_id)
         print("[instagram_oauth] success redirect workspace_id=", workspace_id)
         return self._redirect_success(workspace_id)
 

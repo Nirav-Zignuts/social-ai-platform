@@ -9,9 +9,14 @@ from app.integrations.meta.exceptions import (
 )
 from app.integrations.meta.schemas import (
     ConnectedAccountData,
+    MetaContainerStatusResponse,
     MetaFacebookPage,
     MetaInstagramProfile,
+    MetaMediaContainerResponse,
+    MetaMediaDetails,
+    MetaMediaInsightsResponse,
     MetaPagesResponse,
+    MetaPublishResponse,
     MetaTokenResponse,
 )
 
@@ -128,3 +133,63 @@ class MetaService:
             status="connected",
             connected_at=datetime.now(timezone.utc),
         )
+
+    async def create_image_container(
+        self,
+        ig_user_id: str,
+        *,
+        image_url: str,
+        caption: str,
+        access_token: str,
+    ) -> MetaMediaContainerResponse:
+        data = await self._client.create_media_container(
+            ig_user_id,
+            image_url=image_url,
+            caption=caption,
+            access_token=access_token,
+        )
+        return MetaMediaContainerResponse.model_validate(data)
+
+    async def get_container_status(
+        self,
+        container_id: str,
+        access_token: str,
+    ) -> MetaContainerStatusResponse:
+        data = await self._client.get_container_status(container_id, access_token)
+        return MetaContainerStatusResponse.model_validate(data)
+
+    async def publish_container(
+        self,
+        ig_user_id: str,
+        *,
+        creation_id: str,
+        access_token: str,
+    ) -> MetaPublishResponse:
+        data = await self._client.publish_media(
+            ig_user_id,
+            creation_id=creation_id,
+            access_token=access_token,
+        )
+        return MetaPublishResponse.model_validate(data)
+
+    async def get_media_details(
+        self,
+        media_id: str,
+        access_token: str,
+    ) -> MetaMediaDetails:
+        data = await self._client.get_media(media_id, access_token)
+        return MetaMediaDetails.model_validate(data)
+
+    async def get_media_insights(
+        self,
+        media_id: str,
+        access_token: str,
+        *,
+        metrics: str = "likes,comments,saved,shares,reach,views,total_interactions,profile_visits",
+    ) -> MetaMediaInsightsResponse:
+        data = await self._client.get_media_insights(
+            media_id,
+            access_token,
+            metrics=metrics,
+        )
+        return MetaMediaInsightsResponse.model_validate(data)

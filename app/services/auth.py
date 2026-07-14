@@ -325,7 +325,7 @@ class AuthService:
 
         # Create new access token
         access_token = token_manager.create_access_token(subject=user_id)
-        session = user_session.model.filter(user_session.model.refresh_token == refresh_token).first()
+        session = self.session_repo.get_session_by_refresh_token(refresh_token)
         if not session:
             raise InvalidTokenError(ErrorMessages.INVALID_TOKEN)
         session.access_token = access_token

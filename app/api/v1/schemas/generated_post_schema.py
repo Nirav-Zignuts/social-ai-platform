@@ -40,9 +40,26 @@ class GeneratedPostResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class PostInsightResponse(BaseModel):
+    ig_media_id: str
+    permalink: Optional[str] = None
+    like_count: Optional[int] = None
+    comments_count: Optional[int] = None
+    saved_count: Optional[int] = None
+    shares_count: Optional[int] = None
+    reach: Optional[int] = None
+    views: Optional[int] = None
+    total_interactions: Optional[int] = None
+    profile_visits: Optional[int] = None
+    fetched_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class GeneratedPostDetailResponse(BaseModel):
     post: GeneratedPostResponse
     review_link: str
+    insights: Optional[PostInsightResponse] = None
 
 
 class RejectReviewRequest(BaseModel):

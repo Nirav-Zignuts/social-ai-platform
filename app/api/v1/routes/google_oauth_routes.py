@@ -12,10 +12,16 @@ router = APIRouter(prefix="/auth/google", tags=["Google OAuth"])
 
 
 def get_google_oauth_service(db: Session = Depends(get_db)) -> GoogleOAuthService:
-    redis_client = get_redis_client()
-    oauth_state_repo = GoogleOAuthStateRepository(redis_client)
-    return GoogleOAuthService(db=db, oauth_state_repo=oauth_state_repo)
-
+    print("[google_oauth_routes] get_google_oauth_service")
+    try:
+        redis_client = get_redis_client()
+        print("[google_oauth_routes] redis_client ->", redis_client)
+        oauth_state_repo = GoogleOAuthStateRepository(redis_client)
+        print("[google_oauth_routes] oauth_state_repo ->", oauth_state_repo)
+        return GoogleOAuthService(db=db, oauth_state_repo=oauth_state_repo)
+    except Exception as e:
+        print("[google_oauth_routes] error ->", e)
+        raise e
 
 @router.get(
     "/login",

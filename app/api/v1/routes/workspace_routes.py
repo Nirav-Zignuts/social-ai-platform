@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.schemas.workspace_schema import (
@@ -15,7 +15,9 @@ from app.api.v1.schemas.workspace_schema import (
 )
 from app.common.messages import ErrorMessage, SuccessMessage, WorkspaceMessages, ErrorMessages
 from app.db.session import get_db
+from app.knowledge.tasks import process_knowledge_document
 from app.middlewares.auth_middleware import require_auth
+from app.services.generation_tasks import run_generation_cycle
 from app.services.workspace_service import WorkspaceService
 
 router = APIRouter(prefix="/workspaces", tags=["Workspaces"])
@@ -246,6 +248,7 @@ async def get_ai_configuration(
 @router.post("/{workspace_id}/knowledge-base/documents", response_model=SuccessMessage)
 async def upload_knowledge_document(
     workspace_id: UUID,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user=Depends(require_auth),
@@ -256,6 +259,7 @@ async def upload_knowledge_document(
         user_id = UUID(user_id_str) if isinstance(user_id_str, str) else user_id_str
         result = await service.upload_knowledge_document(workspace_id, file, user_id)
         doc = result["document"]
+        background_tasks.add_task(process_knowledge_document, str(doc.id))
         return SuccessMessage(
             message=WorkspaceMessages.DOCUMENT_UPLOADED,
             data={"document": KnowledgeDocumentResponse.model_validate(doc).model_dump(mode="json")},
@@ -330,15 +334,16 @@ async def delete_knowledge_document(
 @router.post("/{workspace_id}/generate-now")
 async def generate_now(
     workspace_id: UUID,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user=Depends(require_auth),
 ):
     try:
         service = WorkspaceService(db)
         user_id_str = current_user.get("user_id")
-        print(f"Current user ID: {user_id_str}")  # Debugging line
         user_id = UUID(user_id_str) if isinstance(user_id_str, str) else user_id_str
         result = service.trigger_generation_cycle(workspace_id, user_id)
+        background_tasks.add_task(run_generation_cycle, str(workspace_id))
         return result
     except HTTPException as e:
         return ErrorMessage(message=e.detail, code=e.status_code)
