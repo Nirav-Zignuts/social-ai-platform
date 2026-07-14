@@ -5,7 +5,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-CHROMA_PERSIST_DIR = "storage/chroma"
+CHROMA_PERSIST_DIR = os.environ.get("CHROMA_PERSIST_DIR", "storage/chroma")
+
 
 def get_retrieval_embeddings() -> CohereEmbeddings:
     """Returns Cohere embeddings configured for search query."""

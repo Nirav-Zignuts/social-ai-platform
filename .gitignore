@@ -35,3 +35,6 @@ htmlcov/
 
 # Logs
 *.log
+
+# Local vector / upload storage (ephemeral on Render too)
+storage/

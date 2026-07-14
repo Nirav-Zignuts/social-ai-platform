@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError,StarletteHTTPException
 from pydantic import ValidationError
+import os
 
 from app.core.config import settings
 from app.core.lifespan import lifespan
@@ -60,7 +61,15 @@ app.include_router(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        origin.strip()
+        for origin in [
+            settings.FRONTEND_URL,
+            *os.getenv("CORS_ORIGINS", "").split(","),
+        ]
+        if origin.strip()
+    ]
+    or ["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
