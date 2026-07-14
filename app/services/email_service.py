@@ -1,13 +1,13 @@
 """
-Reusable email sending service.
+Email sending via Resend HTTP API (works on Render Free; SMTP is blocked there).
 """
 
+from __future__ import annotations
+
 import logging
-import ssl
-from email.message import EmailMessage
 from typing import Optional
 
-import smtplib
+import resend
 
 from app.core.config import settings
 
@@ -15,45 +15,16 @@ logger = logging.getLogger(__name__)
 
 
 class EmailService:
-    """Service responsible for sending email messages."""
+    """Service responsible for sending email messages through Resend."""
 
-    def __init__(self):
-        self.smtp_host = settings.SMTP_HOST
-        self.smtp_port = settings.SMTP_PORT
-        self.smtp_username = settings.SMTP_USERNAME
-        self.smtp_password = settings.SMTP_PASSWORD
-        self.email_from = settings.EMAIL_FROM
+    def __init__(self) -> None:
+        self.api_key = (settings.RESEND_API_KEY or "").strip()
+        self.email_from = (settings.EMAIL_FROM or "").strip()
         self.frontend_url = settings.FRONTEND_URL
 
     def build_verification_link(self, token: str) -> str:
         """Build the frontend email verification URL."""
         return f"{self.frontend_url.rstrip('/')}/verify-email?token={token}"
-
-    def _connect(self) -> smtplib.SMTP:
-        context = ssl.create_default_context()
-        use_ssl = self.smtp_port == 465
-
-        if use_ssl:
-            smtp: smtplib.SMTP = smtplib.SMTP_SSL(
-                self.smtp_host, self.smtp_port, context=context
-            )
-        else:
-            smtp = smtplib.SMTP(self.smtp_host, self.smtp_port)
-
-        smtp.ehlo()
-
-        if not use_ssl and smtp.has_extn("STARTTLS"):
-            smtp.starttls(context=context)
-            smtp.ehlo()
-
-        if self.smtp_username and smtp.has_extn("AUTH"):
-            smtp.login(self.smtp_username, self.smtp_password)
-        elif self.smtp_username:
-            logger.warning(
-                "SMTP credentials configured but server does not support AUTH; sending without login"
-            )
-
-        return smtp
 
     def send_email(
         self,
@@ -62,36 +33,37 @@ class EmailService:
         html_body: str,
         text_body: Optional[str] = None,
     ) -> None:
-        """Send an email using SMTP."""
-        message = EmailMessage()
-        message["Subject"] = subject
-        message["From"] = self.email_from
-        message["To"] = recipient
-        message.set_content(text_body or html_body)
-        message.add_alternative(html_body, subtype="html")
+        """Send an email using Resend."""
+        if not self.api_key:
+            raise RuntimeError(
+                "RESEND_API_KEY is not configured. Add it in Render/env before sending email."
+            )
+        if not self.email_from:
+            raise RuntimeError(
+                "EMAIL_FROM is not configured. Use a Resend-verified sender, "
+                "e.g. 'AI Platform <onboarding@resend.dev>' for testing."
+            )
 
-        context = ssl.create_default_context()
+        resend.api_key = self.api_key
+        params: resend.Emails.SendParams = {
+            "from": self.email_from,
+            "to": [recipient],
+            "subject": subject,
+            "html": html_body,
+        }
+        if text_body:
+            params["text"] = text_body
 
         try:
-            if self.smtp_port == 465:
-                with smtplib.SMTP_SSL(
-                    self.smtp_host,
-                    self.smtp_port,
-                    context=context,
-                ) as smtp:
-                    smtp.login(self.smtp_username, self.smtp_password)
-                    smtp.send_message(message)
-            else:
-                with smtplib.SMTP(self.smtp_host, self.smtp_port) as smtp:
-                    smtp.ehlo()
-                    smtp.starttls(context=context)
-                    smtp.ehlo()
-                    smtp.login(self.smtp_username, self.smtp_password)
-                    smtp.send_message(message)
-
-            logger.info("Email sent successfully to %s", recipient)
+            result = resend.Emails.send(params)
+            email_id = result.get("id") if isinstance(result, dict) else getattr(result, "id", None)
+            logger.info(
+                "Email sent via Resend to %s (id=%s)",
+                recipient,
+                email_id,
+            )
         except Exception:
-            logger.exception("Failed to send email to %s", recipient)
+            logger.exception("Failed to send email to %s via Resend", recipient)
             raise
 
     def send_verification_email(

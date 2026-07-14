@@ -65,11 +65,13 @@ class Settings(BaseSettings):
     RSA_PRIVATE_KEY: str = os.getenv("RSA_PRIVATE_KEY", "")
     RSA_PUBLIC_KEY: str = os.getenv("RSA_PUBLIC_KEY", "")
 
-    SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
-    SMTP_PORT: int = 465
-    SMTP_USERNAME: str = os.getenv("SMTP_USERNAME", "")
-    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
-    EMAIL_FROM: str = os.getenv("EMAIL_FROM", "")
+    # Resend HTTP API (use this on Render — SMTP ports are blocked on Free)
+    RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
+    EMAIL_FROM: str = os.getenv(
+        "EMAIL_FROM",
+        "AI Marketing Platform <onboarding@resend.dev>",
+    )
+
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")

@@ -21,7 +21,8 @@
 | `META_*` | App id/secret + `META_REDIRECT_URI=https://<render>/api/v1/instagram/callback` |
 | `GOOGLE_*` | Client id/secret + `GOOGLE_REDIRECT_URI=https://<render>/api/v1/auth/google/callback/` |
 | `CLOUDINARY_*` | Cloud name, key, secret |
-| `SMTP_*` / `EMAIL_FROM` | Transactional email |
+| `RESEND_API_KEY` | From https://resend.com/api-keys |
+| `EMAIL_FROM` | Verified sender, e.g. `AI Platform <onboarding@resend.dev>` (test) or `AI Platform <noreply@yourdomain.com>` |
 | `COHERE_API_KEY` | RAG embeddings |
 | LLM keys | Per `LLM_PROVIDER` (`OPENAI_API_KEY`, `GROQ_API_KEY`, etc.) |
 

@@ -162,12 +162,12 @@ def send_email_notification(notification: Notification, db: Session | None = Non
         session.add(notification)
         session.commit()
     except Exception:
+        # Never fail the parent workflow (generation/publish) because email failed.
         logger.exception(
             "Failed to send email notification %s to user %s",
             notification.id,
             notification.user_id,
         )
-        raise
     finally:
         if owns_session:
             session.close()
