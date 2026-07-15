@@ -37,7 +37,7 @@ class ReviewerOutput(BaseModel):
 
 CONTENT_TYPES = [
     "educational", "promotional", "behind_the_scenes", 
-    "product_highlight", "faq", "testimonial", "seasonal"
+    "product_highlight", "faq", "testimonial", "seasonal","storytelling", "user_generated_content", "event_announcement"
 ]
 
 PASS_THRESHOLD = 70
