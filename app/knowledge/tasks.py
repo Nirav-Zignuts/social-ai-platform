@@ -7,7 +7,7 @@ from app.models.knowledge_document import KnowledgeDocument
 from app.models.knowledge_chunk import KnowledgeChunk
 from app.knowledge.loaders import load_document_text, EmptyDocumentError
 from app.knowledge.chunking import chunk_text
-from app.knowledge.vectorstore import index_chunks, delete_document_vectors
+from app.knowledge.vectorstore import index_chunks, delete_document_vectors, collection_vector_count
 
 logger = logging.getLogger(__name__)
 
@@ -60,13 +60,22 @@ def process_knowledge_document(document_id: str) -> None:
             db.commit()
 
             chroma_ids = index_chunks(str(doc.workspace_id), document_id, chunks)
+            if len(chroma_ids) != len(chunks):
+                raise RuntimeError(
+                    f"Chroma indexed {len(chroma_ids)} ids for {len(chunks)} chunks"
+                )
+            if chunks and collection_vector_count(str(doc.workspace_id)) == 0:
+                raise RuntimeError(
+                    "Chroma collection appears empty after index_chunks — "
+                    "refusing to mark document as indexed"
+                )
 
-            for chroma_id, chunk in zip(chroma_ids, chunks):
+            for i, (chroma_id, chunk) in enumerate(zip(chroma_ids, chunks)):
                 chunk_record = KnowledgeChunk(
                     document_id=doc.id,
                     workspace_id=doc.workspace_id,
                     chunk_text=chunk,
-                    chunk_index=chunks.index(chunk),
+                    chunk_index=i,
                     chroma_id=chroma_id,
                 )
                 db.add(chunk_record)

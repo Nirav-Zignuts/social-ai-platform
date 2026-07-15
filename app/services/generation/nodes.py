@@ -42,6 +42,23 @@ CONTENT_TYPES = [
 
 PASS_THRESHOLD = 70
 
+
+def check_hard_rules(
+    caption: str,
+    hashtags: list[str],
+    cta: str,
+    prohibited_words: list[str],
+    required_keywords: list[str],
+) -> dict:
+    """Deterministic prohibited-word / required-keyword enforcement (non-LLM)."""
+    full_text = f"{caption or ''} {' '.join(hashtags or [])} {cta or ''}".lower()
+    violations = [w for w in (prohibited_words or []) if w and w.lower() in full_text]
+    missing_required = [
+        k for k in (required_keywords or []) if k and k.lower() not in full_text
+    ]
+    return {"violations": violations, "missing_required": missing_required}
+
+
 # ----------------- Nodes -----------------
 
 def context_builder_node(state: GenerationState) -> GenerationState:
@@ -86,32 +103,51 @@ def context_builder_node(state: GenerationState) -> GenerationState:
             "required_keywords": bp.required_keywords if bp else [],
         }
 
-        # RAG Retrieval
         rag_query = None
         rag_chunk_count = 0
-        if bp and bp.business_name and bp.industry:
-            rag_query = f"Generate an Instagram post for {bp.business_name}, a {bp.industry} business"
-            gen_log("context_builder → RAG query", query=rag_query)
-            try:
-                retrieved_chunks = retrieve_context(workspace_id, rag_query, k=5)
-                rag_chunk_count = len(retrieved_chunks)
-                if retrieved_chunks:
-                    business_context = "Business Context from Knowledge Base:\n"
-                    for chunk in retrieved_chunks:
-                        text = chunk.get("chunk_text") or chunk.get("text") or ""
-                        business_context += f"- {text}\n"
-                else:
-                    business_context = f"Business profile for {bp.business_name} ({bp.industry}). No specific knowledge base documents found."
-            except Exception as exc:
-                gen_log("context_builder → RAG FAILED", error=str(exc))
-                business_context = f"Business profile for {bp.business_name} ({bp.industry}). (Knowledge base retrieval failed)."
+        retrieved_chunks: list = []
+
+        if bp is None:
+            business_context = (
+                "No business profile available for this workspace yet. "
+                "Write a generic, professional Instagram caption."
+            )
         else:
-            business_context = "No detailed business profile available."
+            business_context = (
+                f"Business: {bp.business_name or 'Unknown'} ({bp.industry or 'Unknown industry'})\n"
+                f"What this business does: {bp.description or 'Not specified'}\n"
+                f"Who this content is for: {bp.target_audience or 'General audience'}"
+            )
+
+            if bp.business_name and bp.industry:
+                rag_query = (
+                    f"Generate an Instagram post for {bp.business_name}, "
+                    f"a {bp.industry} business"
+                )
+                gen_log("context_builder → RAG query", query=rag_query)
+                try:
+                    retrieved_chunks = retrieve_context(workspace_id, rag_query, k=5)
+                    rag_chunk_count = len(retrieved_chunks)
+                except Exception as exc:
+                    gen_log("context_builder → RAG FAILED", error=str(exc))
+                    retrieved_chunks = []
+                    rag_chunk_count = 0
+
+            if retrieved_chunks:
+                business_context += "\n\nRelevant knowledge base details for this post:\n"
+                for chunk in retrieved_chunks:
+                    text = chunk.get("text") or chunk.get("chunk_text") or ""
+                    business_context += f"- {text}\n"
+            else:
+                business_context += (
+                    "\n\n(No specific knowledge base content matched this query — "
+                    "write from the business profile above only.)"
+                )
 
     gen_log(
         "AGENT END ← context_builder",
         recent_posts_context=recent_posts_context,
-        business_context=business_context[:500] + ("..." if len(business_context) > 500 else ""),
+        business_context=business_context[:800] + ("..." if len(business_context) > 800 else ""),
         ai_config=ai_config,
         rag_query=rag_query,
         rag_chunk_count=rag_chunk_count,
@@ -301,25 +337,41 @@ def image_node(state: GenerationState) -> GenerationState:
 
 
 def reviewer_node(state: GenerationState) -> GenerationState:
+    ai_c = state.get("ai_config") or {}
+    prohibited_words = ai_c.get("prohibited_words") or []
+    required_keywords = ai_c.get("required_keywords") or []
+    brand_voice = ai_c.get("brand_voice") or ""
+
     gen_log(
         "AGENT START → reviewer / Brand Compliance Reviewer",
         generation_cycle_id=state.get("generation_cycle_id"),
         pass_threshold=PASS_THRESHOLD,
         retry_count=state.get("reviewer_retry_count", 0),
+        prohibited_words=prohibited_words,
+        required_keywords=required_keywords,
     )
 
-    prompt = f"""
-    You are a strict Brand Compliance Reviewer. Check this post against EXACT rules, not general quality.
-    Review the following proposed post. 
-    
-    Content Type: {state['content_type']}
-    Caption: {state['caption']}
-    Hashtags: {state['hashtags']}
-    CTA: {state['cta']}
-    
-    Does this properly fit the requested content type? Is it high quality?
-    Provide a score from 0-100.
-    """
+    prompt = f"""You are a strict Brand Compliance Reviewer. Check this post against SPECIFIC rules, not just general quality impressions.
+
+Content Type: {state['content_type']}
+Caption: {state['caption']}
+Hashtags: {state['hashtags']}
+CTA: {state['cta']}
+
+RULES TO CHECK EXPLICITLY:
+1. Must NOT contain any of these words/phrases: {', '.join(prohibited_words) or 'none specified'}
+2. Must contain at least one of these keywords: {', '.join(required_keywords) or 'none required'}
+3. Must match this brand voice: {brand_voice or 'not specified'}
+4. Must genuinely fit the content type "{state['content_type']}" ({state.get('content_type_rationale') or 'n/a'}) —
+   not just be generically promotional dressed up as this type.
+
+Score 0-100 on overall quality and fit. Note: rules 1 and 2 are also checked separately by exact
+text matching, so focus your judgment on rules 3 and 4, and on genuine caption quality — but still
+mention in your notes if you notice a rule 1/2 issue.
+
+Provide specific, actionable notes — if something is wrong, name exactly what and how to fix it,
+since these notes are used to guide a rewrite if this post doesn't pass.
+"""
 
     gen_log("AGENT PROMPT → reviewer", agent="reviewer", prompt=prompt.strip())
 
@@ -335,7 +387,30 @@ def reviewer_node(state: GenerationState) -> GenerationState:
         notes = f"Automated review failed to run ({str(e)[:100]}). Manual review required."
         gen_log("AGENT ERROR → reviewer LLM failed", error=str(e), notes=notes)
 
-    passed = score >= PASS_THRESHOLD
+    hard_check = check_hard_rules(
+        state.get("caption") or "",
+        state.get("hashtags") or [],
+        state.get("cta") or "",
+        prohibited_words,
+        required_keywords,
+    )
+    gen_log("AGENT → reviewer hard_rules", hard_check=hard_check)
+
+    if hard_check["violations"] or hard_check["missing_required"]:
+        passed = False
+        score = min(score, 40)
+        hard_rule_note = []
+        if hard_check["violations"]:
+            hard_rule_note.append(
+                f"Contains prohibited word(s): {', '.join(hard_check['violations'])}"
+            )
+        if hard_check["missing_required"]:
+            hard_rule_note.append(
+                f"Missing required keyword(s): {', '.join(hard_check['missing_required'])}"
+            )
+        notes = " | ".join(hard_rule_note) + (f" | LLM notes: {notes}" if notes else "")
+    else:
+        passed = score >= PASS_THRESHOLD
 
     gen_log(
         "AGENT END ← reviewer",

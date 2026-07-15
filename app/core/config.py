@@ -125,6 +125,11 @@ class Settings(BaseSettings):
         object.__setattr__(self, "DATABASE_URL", _normalize_database_url(self.DATABASE_URL))
         object.__setattr__(self, "RSA_PRIVATE_KEY", _normalize_pem(self.RSA_PRIVATE_KEY) or "")
         object.__setattr__(self, "RSA_PUBLIC_KEY", _normalize_pem(self.RSA_PUBLIC_KEY) or "")
+        # Absolute path so uvicorn --reload / cwd changes don't split Chroma across dirs.
+        chroma = self.CHROMA_PERSIST_DIR or "storage/chroma"
+        if not os.path.isabs(chroma):
+            chroma = os.path.abspath(chroma)
+        object.__setattr__(self, "CHROMA_PERSIST_DIR", chroma)
 
 
 @lru_cache
