@@ -192,7 +192,6 @@ class InstagramOAuthService:
             print("[instagram_oauth] long-lived token ->", long_lived.access_token)
             account_data = await self.meta_service.resolve_instagram_business_connection(
                 user_access_token=long_lived.access_token,
-                token_expires_in=long_lived.expires_in,
             )
             print(
                 "[instagram_oauth] resolved IG account:",
@@ -208,7 +207,7 @@ class InstagramOAuthService:
                     "display_name": account_data.display_name,
                     "access_token": account_data.access_token,
                     "refresh_token": account_data.refresh_token,
-                    "expires_at": account_data.expires_at,
+                    "expires_at": None,
                     "page_id": account_data.page_id,
                     "page_name": account_data.page_name,
                     "instagram_business_account_id": account_data.instagram_business_account_id,
@@ -218,7 +217,41 @@ class InstagramOAuthService:
                     "last_sync_at": None,
                 },
             )
-            print("[instagram_oauth] saved connected_account id=", saved.id, "workspace_id=", workspace_id)
+            print(
+                "[instagram_oauth] saved connected_account id=",
+                saved.id,
+                "workspace_id=",
+                workspace_id,
+            )
+
+            # After DB insert: inspect stored page token and persist unix expiry.
+            try:
+                debug_payload = await self.meta_service.debug_token(saved.access_token)
+                expires_at = MetaService.expires_at_from_debug(debug_payload)
+                print(
+                    "[instagram_oauth] debug_token unix -> expires_at=",
+                    expires_at,
+                    "stored for connected_account id=",
+                    saved.id,
+                )
+                if expires_at is not None:
+                    saved.expires_at = expires_at
+                    self.connected_account_repo.update(saved)
+                    print(
+                        "[instagram_oauth] persisted expires_at=",
+                        saved.expires_at,
+                    )
+                else:
+                    print(
+                        "[instagram_oauth] no usable unix expiry "
+                        "(expires_at=0 and data_access_expires_at missing)"
+                    )
+            except Exception as debug_exc:
+                print(
+                    "[instagram_oauth] debug_token after connect failed "
+                    "(account still connected):",
+                    debug_exc,
+                )
         except MetaIntegrationError as exc:
             print("[instagram_oauth] MetaIntegrationError:", exc)
             return self._redirect_error(workspace_id, str(exc))

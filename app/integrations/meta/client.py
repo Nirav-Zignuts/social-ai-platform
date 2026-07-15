@@ -104,6 +104,22 @@ class MetaGraphClient:
             },
         )
 
+    async def debug_token(self, input_token: str) -> dict[str, Any]:
+        """
+        Inspect a user/page token via GET /debug_token.
+
+        Uses app access token ({app_id}|{app_secret}) as required by Meta.
+        Response includes expires_at (unix), is_valid, scopes, etc.
+        """
+        app_access_token = f"{self.app_id}|{self.app_secret}"
+        return await self.get(
+            "debug_token",
+            params={
+                "input_token": input_token,
+                "access_token": app_access_token,
+            },
+        )
+
     async def get_pages(self, access_token: str) -> dict[str, Any]:
         return await self.get(
             "me/accounts",

@@ -1,11 +1,11 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
+from pprint import pprint
 
 from app.core.config import settings
 from app.integrations.meta.client import MetaGraphClient
 from app.integrations.meta.exceptions import (
     FacebookPageNotFound,
     InstagramAccountNotFound,
-    MetaAPIError,
 )
 from app.integrations.meta.schemas import (
     ConnectedAccountData,
@@ -41,6 +41,37 @@ class MetaService:
         data = await self._client.exchange_long_lived_token(short_lived_token)
         return MetaTokenResponse.model_validate(data)
 
+    async def debug_token(self, input_token: str) -> dict:
+        """Call Meta GET /debug_token and return the full Graph payload."""
+        data = await self._client.debug_token(input_token)
+        print("[meta] debug_token FULL response:")
+        pprint(data)
+        return data
+
+    @staticmethod
+    def expires_at_from_debug(debug_payload: dict) -> datetime | None:
+        """
+        Parse unix expiry from debug_token.data.
+
+        Page tokens usually have expires_at=0 (never). In that case use
+        data_access_expires_at, which Meta still returns as a unix timestamp.
+        """
+        data = debug_payload.get("data") if isinstance(debug_payload, dict) else None
+        if not isinstance(data, dict):
+            return None
+
+        for key in ("expires_at", "data_access_expires_at"):
+            raw = data.get(key)
+            if raw is None:
+                continue
+            try:
+                ts = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if ts > 0:
+                return datetime.fromtimestamp(ts, tz=timezone.utc)
+        return None
+
     async def get_pages(self, access_token: str) -> MetaPagesResponse:
         data = await self._client.get_pages(access_token)
         return MetaPagesResponse.model_validate(data)
@@ -72,7 +103,7 @@ class MetaService:
     async def resolve_instagram_business_connection(
         self,
         user_access_token: str,
-        token_expires_in: int | None,
+        token_expires_in: int | None = None,
     ) -> ConnectedAccountData:
         pages_response = await self.get_pages(user_access_token)
         print("[meta] me/accounts page count:", len(pages_response.data))
@@ -117,17 +148,14 @@ class MetaService:
         )
         print("[meta] instagram profile:", profile.id, profile.username, profile.name)
 
-        expires_at = None
-        if token_expires_in:
-            expires_at = datetime.now(timezone.utc) + timedelta(seconds=token_expires_in)
-
+        # expires_at is filled after connect via /debug_token (see oauth callback).
         return ConnectedAccountData(
             provider_account_id=profile.id,
             provider_username=profile.username,
             display_name=profile.name,
             access_token=selected_page.access_token,
             refresh_token=None,
-            expires_at=expires_at,
+            expires_at=None,
             page_id=selected_page.id,
             page_name=selected_page.name,
             instagram_business_account_id=instagram_business_account_id,
