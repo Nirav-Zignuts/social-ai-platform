@@ -363,6 +363,8 @@ class WorkspaceService:
                 self._soft_flag(row)
 
         workspace.status = "deleted"
+        workspace.slug = f"{workspace.slug}-deleted-{workspace.id}"
+
         self._soft_flag(workspace)
         self.db.add(workspace)
         self.db.commit()
