@@ -93,6 +93,21 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: str = os.getenv("CLOUDINARY_API_KEY", "")
     CLOUDINARY_API_SECRET: str = os.getenv("CLOUDINARY_API_SECRET", "")
 
+    # Pollinations image generation
+    # Free tier (default): image.pollinations.ai + model=flux (0 Pollen).
+    # Set POLLINATIONS_FREE_TIER=false to force gen.pollinations.ai (needs Pollen for most models).
+    POLLINATIONS_API_KEY: str = os.getenv("POLLINATIONS_API_KEY", "")
+    POLLINATIONS_BASE_URL: str = os.getenv(
+        "POLLINATIONS_BASE_URL",
+        "https://gen.pollinations.ai",
+    )
+    POLLINATIONS_IMAGE_MODEL: str = os.getenv("POLLINATIONS_IMAGE_MODEL", "flux")
+    POLLINATIONS_IMAGE_WIDTH: int = int(os.getenv("POLLINATIONS_IMAGE_WIDTH", "1024"))
+    POLLINATIONS_IMAGE_HEIGHT: int = int(os.getenv("POLLINATIONS_IMAGE_HEIGHT", "1024"))
+    POLLINATIONS_FREE_TIER: bool = os.getenv(
+        "POLLINATIONS_FREE_TIER", "true"
+    ).lower() in ("1", "true", "yes", "on")
+
     PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
 
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")

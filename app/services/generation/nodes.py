@@ -10,7 +10,7 @@ from app.models.workspace import Workspace
 from app.knowledge.retrieval import retrieve_context
 from app.core.enums import GeneratedPostStatus
 from app.core.llm_client import get_chat_model
-from app.core.image_client import generate_image
+from app.core.image_client import assemble_image_prompt, generate_image
 from app.services.generation.state import GenerationState
 from app.services.generation.debug_log import gen_log
 from app.services.scheduling import calculate_next_scheduled_time
@@ -33,6 +33,17 @@ class WriterOutput(BaseModel):
 class ReviewerOutput(BaseModel):
     score: int = Field(description="Score from 0 to 100 on how well it fits the brand voice and requirements.")
     notes: str = Field(description="Actionable notes if it failed, or brief/empty if passed.")
+
+
+class ImagePromptOutput(BaseModel):
+    visual_prompt: str = Field(
+        description=(
+            "Detailed photorealistic scene description for a text-to-image model. "
+            "Describe only subjects, setting, lighting, composition, colors, and mood. "
+            "Must NEVER request any text, letters, numbers, logos, signs, banners, "
+            "captions, watermarks, labels, or typography in the image."
+        )
+    )
 
 
 CONTENT_TYPES = [
@@ -324,12 +335,62 @@ def image_node(state: GenerationState) -> GenerationState:
         generation_cycle_id=state.get("generation_cycle_id"),
     )
 
-    prompt = f"An engaging social media image representing the theme: {state.get('caption', '')[:100]}"
-    gen_log("AGENT PROMPT → image", agent="image", prompt=prompt)
+    ai_c = state.get("ai_config") or {}
+    caption = (state.get("caption") or "")[:400]
+    content_type = state.get("content_type") or "lifestyle"
+    business_context = (state.get("business_context") or "")[:800]
+    style = ai_c.get("content_style") or "professional"
+
+    visual_brief = f"""You are an expert Instagram art director writing prompts for a photorealistic text-to-image model (Flux).
+
+Goal: invent ONE square social photograph that supports this post WITHOUT putting any writing in the frame.
+
+Content type: {content_type}
+Brand / visual style: {style}
+Business context (use for subject matter only — never quote as on-image text):
+{business_context}
+
+Caption gist (mood/theme only — NEVER paste caption words into the image or ask for them to be rendered):
+{caption}
+
+STRICT OUTPUT RULES for visual_prompt:
+1. Describe a camera-ready scene: subject, environment, props, lighting, color palette, camera angle, depth of field.
+2. Keep it concrete and photographic (not abstract collage art).
+3. Prefer one clear focal subject filling most of the frame — Instagram-ready.
+4. Surfaces and packaging must read as unmarked / blank / label-free.
+5. FORBIDDEN in the prompt and the resulting image: text, letters, numbers, typography, logos, watermarks, signs, posters, banners, captions, subtitles, stickers with writing, menus, UI, book pages, newspaper, neon lettering, chalkboard writing.
+6. Do not wrap the scene in quotation marks. Do not invent brand names to display.
+7. Length: 60–120 words of continuous visual description.
+"""
+
+    visual_scene = ""
+    try:
+        model = get_chat_model("writer")
+        structured_llm = model.with_structured_output(ImagePromptOutput)
+        gen_log("AGENT PROMPT → image visual brief", agent="image", prompt=visual_brief.strip())
+        result = structured_llm.invoke(visual_brief)
+        visual_scene = (result.visual_prompt or "").strip()
+    except Exception as e:
+        gen_log("AGENT ERROR → image prompt LLM failed; using fallback scene", error=str(e))
+        visual_scene = (
+            f"Lifestyle photograph matching a {content_type} Instagram post for this brand, "
+            f"{style} aesthetic, soft natural window light, shallow depth of field, "
+            "one clear product or lifestyle subject, clean unmarked surfaces"
+        )
+
+    prompt = assemble_image_prompt(visual_scene, caption=caption)
+    gen_log("AGENT PROMPT → image (final Pollinations)", agent="image", prompt=prompt)
 
     image_url = generate_image(prompt, state["workspace_id"], state["generation_cycle_id"])
 
-    gen_log("AGENT END ← image", image_url=image_url)
+    if not image_url:
+        gen_log(
+            "AGENT END ← image (no URL — Pollinations free + paid both failed; continuing)",
+            image_url=None,
+        )
+    else:
+        gen_log("AGENT END ← image", image_url=image_url)
+
     return {
         **state,
         "image_url": image_url
