@@ -67,7 +67,7 @@ class WorkspaceService:
             counter += 1
 
     def _get_workspace_or_404(self, workspace_id: UUID, user_id: UUID) -> Workspace:
-        workspace = self.workspace_repo.get_by_id(workspace_id)
+        workspace = self.workspace_repo.get_active_by_id(workspace_id)
         if not workspace:
             raise HTTPException(status_code=404, detail=ErrorMessages.WORKSPACE_NOT_FOUND)
         if workspace.owner_id != user_id:
@@ -271,4 +271,109 @@ class WorkspaceService:
         return {
             "workspace_id": str(workspace.id),
             "status": "queued",
+        }
+
+    @staticmethod
+    def _soft_flag(entity) -> None:
+        entity.is_deleted = True
+        entity.is_active = False
+
+    def soft_delete_workspace(self, workspace_id: UUID, user_id: UUID) -> dict:
+        """
+        Soft-delete workspace and all related DB rows.
+        Hard-deletes Chroma vector data for the workspace (cannot soft-delete vectors).
+        """
+        workspace = self._get_workspace_or_404(workspace_id, user_id)
+
+        from app.core.enums import ConnectedAccountStatus
+        from app.knowledge.vectorstore import delete_workspace_vectors
+        from app.models.ai_configuration import AIConfiguration
+        from app.models.business_profile import BusinessProfile
+        from app.models.connected_account import ConnectedAccount
+        from app.models.generated_post import GeneratedPost
+        from app.models.knowledge_chunk import KnowledgeChunk
+        from app.models.knowledge_document import KnowledgeDocument
+        from app.models.notification import Notification
+        from app.models.onboarding_chat_message import OnboardingChatMessage
+        from app.models.onboarding_chat_session import OnboardingChatSession
+        from app.models.post_insight import PostInsight
+        from app.models.post_review import PostReview
+        from app.models.publishing_job import PublishingJob
+
+        # Hard-delete vectors first so RAG cannot resurface after soft-delete.
+        vectors_removed = delete_workspace_vectors(str(workspace.id))
+
+        post_ids = [
+            pid
+            for (pid,) in self.db.query(GeneratedPost.id)
+            .filter(GeneratedPost.workspace_id == workspace.id)
+            .all()
+        ]
+        session_ids = [
+            sid
+            for (sid,) in self.db.query(OnboardingChatSession.id)
+            .filter(OnboardingChatSession.workspace_id == workspace.id)
+            .all()
+        ]
+        document_ids = [
+            did
+            for (did,) in self.db.query(KnowledgeDocument.id)
+            .filter(KnowledgeDocument.workspace_id == workspace.id)
+            .all()
+        ]
+
+        for model in (
+            BusinessProfile,
+            AIConfiguration,
+            KnowledgeDocument,
+            KnowledgeChunk,
+            GeneratedPost,
+            PublishingJob,
+            Notification,
+            ConnectedAccount,
+            PostInsight,
+            OnboardingChatSession,
+        ):
+            rows = (
+                self.db.query(model)
+                .filter(model.workspace_id == workspace.id)
+                .all()
+            )
+            for row in rows:
+                self._soft_flag(row)
+                if isinstance(row, ConnectedAccount):
+                    row.status = ConnectedAccountStatus.DISCONNECTED.value
+                    row.access_token = ""
+                    row.refresh_token = None
+
+        if post_ids:
+            for row in (
+                self.db.query(PostReview)
+                .filter(PostReview.post_id.in_(post_ids))
+                .all()
+            ):
+                self._soft_flag(row)
+
+        if session_ids:
+            for row in (
+                self.db.query(OnboardingChatMessage)
+                .filter(OnboardingChatMessage.session_id.in_(session_ids))
+                .all()
+            ):
+                self._soft_flag(row)
+
+        workspace.status = "deleted"
+        self._soft_flag(workspace)
+        self.db.add(workspace)
+        self.db.commit()
+
+        return {
+            "workspace_id": str(workspace.id),
+            "is_deleted": True,
+            "chroma_vectors_removed": vectors_removed,
+            "soft_deleted": {
+                "documents": len(document_ids),
+                "posts": len(post_ids),
+                "onboarding_sessions": len(session_ids),
+            },
         }

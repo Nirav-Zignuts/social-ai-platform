@@ -15,19 +15,32 @@ class WorkspaceRepository(BaseRepository[Workspace]):
     model = Workspace
 
     def get_by_slug(self, slug: str) -> Optional[Workspace]:
-        stmt = select(self.model).where(self.model.slug == slug)
+        stmt = select(self.model).where(
+            self.model.slug == slug,
+            self.model.is_deleted.is_(False),
+        )
         return self.db.execute(stmt).scalar_one_or_none()
 
     def get_user_workspaces(self, user_id: UUID) -> list[Workspace]:
-        stmt = select(self.model).where(self.model.owner_id == user_id)
+        stmt = select(self.model).where(
+            self.model.owner_id == user_id,
+            self.model.is_deleted.is_(False),
+        )
         return list(self.db.execute(stmt).scalars().all())
 
     def get_owned_workspace(self, workspace_id: UUID, user_id: UUID) -> Optional[Workspace]:
         stmt = select(self.model).where(
             self.model.id == workspace_id,
             self.model.owner_id == user_id,
+            self.model.is_deleted.is_(False),
         )
-        print(stmt)
+        return self.db.execute(stmt).scalar_one_or_none()
+
+    def get_active_by_id(self, workspace_id: UUID) -> Optional[Workspace]:
+        stmt = select(self.model).where(
+            self.model.id == workspace_id,
+            self.model.is_deleted.is_(False),
+        )
         return self.db.execute(stmt).scalar_one_or_none()
 
 

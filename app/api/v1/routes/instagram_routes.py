@@ -10,7 +10,7 @@ from app.api.v1.schemas.instagram_schema import (
     InstagramConnectResponse,
     InstagramConnectionStatusResponse,
 )
-from app.common.messages import ErrorMessage, ErrorMessages, SuccessMessage
+from app.common.messages import ErrorMessage, ErrorMessages, SuccessMessage, WorkspaceMessages
 from app.core.redis import get_redis_client
 from app.db.session import get_db
 from app.integrations.meta.exceptions import MetaIntegrationError
@@ -108,3 +108,30 @@ async def instagram_callback(
     service: InstagramOAuthService = Depends(_get_instagram_oauth_service),
 ):
     return await service.handle_callback(code=code, state=state, error=error)
+
+
+@router.delete(
+    "/workspaces/{workspace_id}/instagram",
+    response_model=SuccessMessage,
+    summary="Disconnect Instagram from workspace",
+)
+async def disconnect_instagram(
+    workspace_id: UUID,
+    service: InstagramOAuthService = Depends(_get_instagram_oauth_service),
+    current_user=Depends(require_auth),
+):
+    try:
+        result = await service.disconnect(workspace_id, _user_id(current_user))
+        return SuccessMessage(
+            message=WorkspaceMessages.INSTAGRAM_DISCONNECTED,
+            data=result,
+            code=status.HTTP_200_OK,
+        )
+    except HTTPException as e:
+        return ErrorMessage(message=e.detail, code=e.status_code)
+    except Exception as e:
+        return ErrorMessage(
+            message=ErrorMessages.SERVER_ERROR,
+            code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            details=str(e),
+        )

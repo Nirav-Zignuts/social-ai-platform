@@ -241,16 +241,24 @@ async def edit_post(
 async def delete_generated_post(
     workspace_id: UUID,
     post_id: UUID,
+    sync_with_instagram: bool = Query(
+        default=False,
+        description=(
+            "If true and the post is PUBLISHED, delete the media on Instagram first, "
+            "then soft-delete locally. If Instagram delete fails, local delete is aborted."
+        ),
+    ),
     db: Session = Depends(get_db),
     current_user=Depends(require_auth),
 ):
-    """Soft-delete a generated post (sets is_deleted=True)."""
+    """Soft-delete a generated post (optional Instagram sync delete)."""
     try:
         service = GeneratedPostService(db)
-        result = service.soft_delete_post(
+        result = await service.soft_delete_post(
             workspace_id,
             post_id,
             _user_id(current_user),
+            sync_with_instagram=sync_with_instagram,
         )
         return SuccessMessage(
             message=WorkspaceMessages.POST_DELETED,

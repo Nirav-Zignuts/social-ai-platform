@@ -224,10 +224,47 @@ class InstagramOAuthService:
         print("[instagram_oauth] success redirect workspace_id=", workspace_id)
         return self._redirect_success(workspace_id)
 
+    async def disconnect(self, workspace_id: UUID, user_id: UUID) -> dict:
+        """Disconnect Instagram for a workspace (clears tokens, keeps row for reconnect)."""
+        workspace = self._get_owned_workspace(workspace_id, user_id)
+        account = self.connected_account_repo.get_by_workspace_and_provider(
+            workspace_id=workspace_id,
+            provider=SocialProvider.INSTAGRAM.value,
+        )
+        if not account:
+            raise HTTPException(
+                status_code=404,
+                detail="No Instagram account connected for this workspace",
+            )
+
+        already = account.status == ConnectedAccountStatus.DISCONNECTED.value
+        account.status = ConnectedAccountStatus.DISCONNECTED.value
+        account.access_token = ""
+        account.refresh_token = None
+        account.expires_at = None
+        account.is_active = False
+        self.db.add(account)
+
+        if workspace.onboarding_status in ("instagram_connected", "completed"):
+            workspace.onboarding_status = "ai_configured"
+            self.db.add(workspace)
+
+        self.db.commit()
+        self.db.refresh(account)
+
+        return {
+            "workspace_id": str(workspace_id),
+            "provider": SocialProvider.INSTAGRAM.value,
+            "status": account.status,
+            "already_disconnected": already,
+            "onboarding_status": workspace.onboarding_status,
+        }
+
     def _get_owned_workspace(self, workspace_id: UUID, user_id: UUID):
         workspace = self.workspace_repo.get_owned_workspace(workspace_id, user_id)
         if not workspace:
-            if self.workspace_repo.get_by_id(workspace_id):
+            existing = self.workspace_repo.get_by_id(workspace_id)
+            if existing and not existing.is_deleted:
                 raise HTTPException(status_code=403, detail=ErrorMessages.FORBIDDEN)
             raise HTTPException(status_code=404, detail=ErrorMessages.WORKSPACE_NOT_FOUND)
         return workspace

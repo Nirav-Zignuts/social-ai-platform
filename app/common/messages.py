@@ -103,6 +103,7 @@ class WorkspaceMessages:
     WORKSPACES_RETRIEVED = "Workspaces retrieved successfully"
     WORKSPACE_RETRIEVED = "Workspace retrieved successfully"
     WORKSPACE_UPDATED = "Workspace updated successfully"
+    WORKSPACE_DELETED = "Workspace deleted successfully"
     BUSINESS_PROFILE_UPSERTED = "Business profile saved successfully"
     BUSINESS_PROFILE_RETRIEVED = "Business profile retrieved successfully"
     AI_CONFIG_UPSERTED = "AI configuration saved successfully"
@@ -111,3 +112,4 @@ class WorkspaceMessages:
     DOCUMENTS_RETRIEVED = "Documents retrieved successfully"
     DOCUMENT_DELETED = "Document deleted successfully"
     POST_DELETED = "Generated post deleted successfully"
+    INSTAGRAM_DISCONNECTED = "Instagram disconnected successfully"

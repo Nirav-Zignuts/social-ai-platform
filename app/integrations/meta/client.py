@@ -60,6 +60,15 @@ class MetaGraphClient:
         url = path if path.startswith("http") else f"{self.graph_base_url}/{path.lstrip('/')}"
         return await self._request("POST", url, params=params, data=data)
 
+    async def delete(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        url = path if path.startswith("http") else f"{self.graph_base_url}/{path.lstrip('/')}"
+        return await self._request("DELETE", url, params=params)
+
     def build_oauth_authorization_url(self, state: str, scopes: str) -> str:
         query = urlencode(
             {
@@ -207,4 +216,15 @@ class MetaGraphClient:
                 "creation_id": creation_id,
                 "access_token": access_token,
             },
+        )
+
+    async def delete_media(
+        self,
+        media_id: str,
+        access_token: str,
+    ) -> dict[str, Any]:
+        """Delete a published Instagram media object via Graph API."""
+        return await self.delete(
+            media_id,
+            params={"access_token": access_token},
         )

@@ -193,3 +193,7 @@ class MetaService:
             metrics=metrics,
         )
         return MetaMediaInsightsResponse.model_validate(data)
+
+    async def delete_media(self, media_id: str, access_token: str) -> dict:
+        """Delete published IG media. Returns Graph success payload."""
+        return await self._client.delete_media(media_id, access_token)

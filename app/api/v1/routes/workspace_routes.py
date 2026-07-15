@@ -134,6 +134,37 @@ async def update_workspace(
             details=str(e),
         )
 
+
+@router.delete("/{workspace_id}", response_model=SuccessMessage)
+async def delete_workspace(
+    workspace_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_auth),
+):
+    """
+    Soft-delete a workspace and all related DB records.
+    Hard-deletes Chroma vector data for the workspace.
+    """
+    try:
+        service = WorkspaceService(db)
+        user_id_str = current_user.get("user_id")
+        user_id = UUID(user_id_str) if isinstance(user_id_str, str) else user_id_str
+        result = service.soft_delete_workspace(workspace_id, user_id)
+        return SuccessMessage(
+            message=WorkspaceMessages.WORKSPACE_DELETED,
+            data=result,
+            code=status.HTTP_200_OK,
+        )
+    except HTTPException as e:
+        return ErrorMessage(message=e.detail, code=e.status_code)
+    except Exception as e:
+        return ErrorMessage(
+            message=ErrorMessages.SERVER_ERROR,
+            code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            details=str(e),
+        )
+
+
 ##tested
 @router.post("/{workspace_id}/business-profile", response_model=SuccessMessage)
 async def upsert_business_profile(

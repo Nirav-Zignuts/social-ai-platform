@@ -110,6 +110,46 @@ def delete_document_vectors(workspace_id: str, document_id: str) -> None:
         vectorstore.delete(ids_to_delete)
 
 
+def delete_workspace_vectors(workspace_id: str) -> int:
+    """
+    Hard-delete all Chroma vectors (and drop collection when possible) for a workspace.
+
+    Returns number of vector ids removed from the collection.
+    """
+    workspace_id = str(workspace_id)
+    collection_name = f"workspace_{workspace_id}"
+    persist_directory = get_chroma_persist_dir()
+    removed = 0
+
+    try:
+        vectorstore = get_workspace_collection(workspace_id)
+        result = vectorstore.get()
+        ids = result.get("ids") or []
+        if ids:
+            vectorstore.delete(ids)
+            removed = len(ids)
+    except Exception:
+        logger.exception(
+            "Failed to clear Chroma vectors for workspace %s", workspace_id
+        )
+
+    try:
+        import chromadb
+
+        client = chromadb.PersistentClient(path=persist_directory)
+        client.delete_collection(collection_name)
+        logger.info("Dropped Chroma collection %s", collection_name)
+    except Exception:
+        # Collection may already be empty / missing — not fatal.
+        logger.info(
+            "Chroma collection drop skipped or failed for %s (removed_ids=%s)",
+            collection_name,
+            removed,
+        )
+
+    return removed
+
+
 def rehydrate_workspace_vectors_from_db(workspace_id: str) -> int:
     """
     If Postgres has knowledge_chunks but Chroma is empty for this workspace,
