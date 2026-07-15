@@ -6,6 +6,7 @@ from app.common.messages import ErrorMessage, ErrorMessages, SuccessMessage
 from app.generation.tasks import poll_generation_due
 from app.middlewares.auth_middleware import require_cron_secret
 from app.publishing.tasks import poll_due_posts, publish_post
+from app.services.generation.debug_log import gen_log
 from app.services.generation_tasks import run_generation_cycle
 
 router = APIRouter(prefix="/internal", tags=["Internal Cron"])
@@ -23,7 +24,11 @@ async def generate_content(background_tasks: BackgroundTasks):
     """
     try:
         result = poll_generation_due()
-        print(f"Generation poll completed: {result}")
+        gen_log(
+            "CRON → /internal/generate-content",
+            enqueued=result.get("enqueued"),
+            workspace_ids=result.get("workspace_ids"),
+        )
         for workspace_id in result["workspace_ids"]:
             background_tasks.add_task(run_generation_cycle, workspace_id)
 

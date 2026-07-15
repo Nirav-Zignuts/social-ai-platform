@@ -1,8 +1,5 @@
-import os
-from typing import Dict, Any, List
-from uuid import UUID
+from typing import List
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
 from collections import Counter
 
 from app.db.session import SessionLocal
@@ -15,6 +12,7 @@ from app.core.enums import GeneratedPostStatus
 from app.core.llm_client import get_chat_model
 from app.core.image_client import generate_image
 from app.services.generation.state import GenerationState
+from app.services.generation.debug_log import gen_log
 from app.services.scheduling import calculate_next_scheduled_time
 from app.services.notification_service import (
     notify_post_ready_for_review,
@@ -48,17 +46,23 @@ PASS_THRESHOLD = 70
 
 def context_builder_node(state: GenerationState) -> GenerationState:
     workspace_id = state["workspace_id"]
-    
+    gen_log(
+        "AGENT START → context_builder (no LLM — loads DB + RAG context)",
+        workspace_id=workspace_id,
+        generation_cycle_id=state.get("generation_cycle_id"),
+        calendar_date=state.get("calendar_date"),
+    )
+
     with SessionLocal() as db:
         bp = db.query(BusinessProfile).filter(BusinessProfile.workspace_id == workspace_id).first()
         ai = db.query(AIConfiguration).filter(AIConfiguration.workspace_id == workspace_id).first()
-        
+
         # Recent Posts
         recent_posts = db.query(GeneratedPost).filter(
             GeneratedPost.workspace_id == workspace_id,
             GeneratedPost.status.in_([GeneratedPostStatus.PUBLISHED.value, GeneratedPostStatus.APPROVED.value, GeneratedPostStatus.PENDING_REVIEW.value])
         ).order_by(GeneratedPost.created_at.desc()).limit(20).all()
-        
+
         if not recent_posts:
             recent_posts_context = "No recent posts found for this workspace. This is the first post."
         else:
@@ -68,7 +72,7 @@ def context_builder_node(state: GenerationState) -> GenerationState:
                 ctype = p.content_type or "unknown"
                 recent_lines.append(f"- Type: {ctype} | Hook: {first_line[:50]}...")
             recent_posts_context = "Recent Posts Context:\n" + "\n".join(recent_lines)
-            
+
         # AI Config Dict
         ai_config = {
             "content_style": ai.content_style if ai else "",
@@ -81,23 +85,37 @@ def context_builder_node(state: GenerationState) -> GenerationState:
             "prohibited_words": bp.prohibited_words if bp else [],
             "required_keywords": bp.required_keywords if bp else [],
         }
-        
+
         # RAG Retrieval
+        rag_query = None
+        rag_chunk_count = 0
         if bp and bp.business_name and bp.industry:
-            query = f"Generate an Instagram post for {bp.business_name}, a {bp.industry} business"
+            rag_query = f"Generate an Instagram post for {bp.business_name}, a {bp.industry} business"
+            gen_log("context_builder → RAG query", query=rag_query)
             try:
-                retrieved_chunks = retrieve_context(workspace_id, query, k=5)
+                retrieved_chunks = retrieve_context(workspace_id, rag_query, k=5)
+                rag_chunk_count = len(retrieved_chunks)
                 if retrieved_chunks:
                     business_context = "Business Context from Knowledge Base:\n"
                     for chunk in retrieved_chunks:
-                        business_context += f"- {chunk.get('text', '')}\n"
+                        text = chunk.get("chunk_text") or chunk.get("text") or ""
+                        business_context += f"- {text}\n"
                 else:
                     business_context = f"Business profile for {bp.business_name} ({bp.industry}). No specific knowledge base documents found."
-            except Exception:
+            except Exception as exc:
+                gen_log("context_builder → RAG FAILED", error=str(exc))
                 business_context = f"Business profile for {bp.business_name} ({bp.industry}). (Knowledge base retrieval failed)."
         else:
             business_context = "No detailed business profile available."
-            
+
+    gen_log(
+        "AGENT END ← context_builder",
+        recent_posts_context=recent_posts_context,
+        business_context=business_context[:500] + ("..." if len(business_context) > 500 else ""),
+        ai_config=ai_config,
+        rag_query=rag_query,
+        rag_chunk_count=rag_chunk_count,
+    )
     return {
         **state,
         "recent_posts_context": recent_posts_context,
@@ -109,10 +127,21 @@ def context_builder_node(state: GenerationState) -> GenerationState:
 def strategy_node(state: GenerationState) -> GenerationState:
     # Do not re-run if already selected (e.g. during retry)
     if state.get("content_type"):
+        gen_log(
+            "AGENT SKIP → strategy (content_type already set — e.g. reviewer retry)",
+            content_type=state.get("content_type"),
+            rationale=state.get("content_type_rationale"),
+        )
         return state
-        
+
+    gen_log(
+        "AGENT START → strategy / Content Strategist",
+        generation_cycle_id=state.get("generation_cycle_id"),
+        allowed_content_types=CONTENT_TYPES,
+    )
+
     recent_context = state["recent_posts_context"]
-    
+
     prompt = f"""
     You are a Content Strategist. Your goal is to pick today's content type from the following fixed set:
     {', '.join(CONTENT_TYPES)}
@@ -125,20 +154,23 @@ def strategy_node(state: GenerationState) -> GenerationState:
     If there are no recent posts, pick any type freely.
     Briefly justify your choice.
     """
-    
+
+    gen_log("AGENT PROMPT → strategy", agent="strategist", prompt=prompt.strip())
+
     model = get_chat_model("strategist")
     structured_llm = model.with_structured_output(StrategyOutput)
-    
+
     try:
         result = structured_llm.invoke(prompt)
         content_type = result.content_type
         rationale = result.rationale
-        
+
         # Validate content_type
         if content_type not in CONTENT_TYPES:
             content_type = CONTENT_TYPES[0]
-            
+
     except Exception as e:
+        gen_log("AGENT ERROR → strategy LLM failed; using fallback", error=str(e))
         # Fallback to least used
         import re
         types_found = re.findall(r"Type: (\w+)", recent_context)
@@ -151,6 +183,11 @@ def strategy_node(state: GenerationState) -> GenerationState:
             content_type = min(allowed_counts, key=allowed_counts.get)
         rationale = "Fallback deterministic selection due to LLM failure."
 
+    gen_log(
+        "AGENT END ← strategy",
+        content_type=content_type,
+        content_type_rationale=rationale,
+    )
     return {
         **state,
         "content_type": content_type,
@@ -160,7 +197,14 @@ def strategy_node(state: GenerationState) -> GenerationState:
 
 def writer_node(state: GenerationState) -> GenerationState:
     ai_c = state["ai_config"]
-    
+    gen_log(
+        "AGENT START → writer / Social Media Copywriter",
+        generation_cycle_id=state.get("generation_cycle_id"),
+        content_type=state.get("content_type"),
+        reviewer_retry_count=state.get("reviewer_retry_count", 0),
+        has_revision_notes=bool(state.get("reviewer_notes")),
+    )
+
     prompt = f"""
     You are an expert Social Media Copywriter .
     
@@ -186,13 +230,15 @@ def writer_node(state: GenerationState) -> GenerationState:
     {state['recent_posts_context']}
     
     """
-    
+
     if state.get("reviewer_notes"):
         prompt += f"\nNOTE: Your previous attempt was rejected for this reason: {state['reviewer_notes']}. Revise accordingly."
-        
+
+    gen_log("AGENT PROMPT → writer", agent="writer", prompt=prompt.strip())
+
     model = get_chat_model("writer")
     structured_llm = model.with_structured_output(WriterOutput)
-    
+
     try:
         result = structured_llm.invoke(prompt)
         caption = result.caption
@@ -200,14 +246,20 @@ def writer_node(state: GenerationState) -> GenerationState:
         cta = result.cta
         needs_image = result.needs_image
     except Exception as e:
+        gen_log("AGENT ERROR → writer LLM failed; using fallback", error=str(e))
         # Simplistic fallback
         caption = "Default generated caption due to error."
         hashtags = ["#fallback"]
         cta = "Check out our link in bio!"
         needs_image = False
-        # logger.error(f"Writer LLM failed for cycle {state['generation_cycle_id']}: {e}")
 
-        
+    gen_log(
+        "AGENT END ← writer",
+        caption=caption,
+        hashtags=hashtags,
+        cta=cta,
+        needs_image=needs_image,
+    )
     return {
         **state,
         "caption": caption,
@@ -220,15 +272,28 @@ def writer_node(state: GenerationState) -> GenerationState:
 def image_node(state: GenerationState) -> GenerationState:
     # Only called if needs_image == True, but we can double check
     if not state.get("needs_image"):
-        return state
-        
-    # Skip if we already generated one in a previous pass
-    if state.get("image_url"):
+        gen_log("AGENT SKIP → image (needs_image is False)")
         return state
 
+    # Skip if we already generated one in a previous pass
+    if state.get("image_url"):
+        gen_log(
+            "AGENT SKIP → image (image_url already present)",
+            image_url=state.get("image_url"),
+        )
+        return state
+
+    gen_log(
+        "AGENT START → image / Pollinations + Cloudinary",
+        generation_cycle_id=state.get("generation_cycle_id"),
+    )
+
     prompt = f"An engaging social media image representing the theme: {state.get('caption', '')[:100]}"
+    gen_log("AGENT PROMPT → image", agent="image", prompt=prompt)
+
     image_url = generate_image(prompt, state["workspace_id"], state["generation_cycle_id"])
-    
+
+    gen_log("AGENT END ← image", image_url=image_url)
     return {
         **state,
         "image_url": image_url
@@ -236,6 +301,13 @@ def image_node(state: GenerationState) -> GenerationState:
 
 
 def reviewer_node(state: GenerationState) -> GenerationState:
+    gen_log(
+        "AGENT START → reviewer / Brand Compliance Reviewer",
+        generation_cycle_id=state.get("generation_cycle_id"),
+        pass_threshold=PASS_THRESHOLD,
+        retry_count=state.get("reviewer_retry_count", 0),
+    )
+
     prompt = f"""
     You are a strict Brand Compliance Reviewer. Check this post against EXACT rules, not general quality.
     Review the following proposed post. 
@@ -248,22 +320,34 @@ def reviewer_node(state: GenerationState) -> GenerationState:
     Does this properly fit the requested content type? Is it high quality?
     Provide a score from 0-100.
     """
-    
+
+    gen_log("AGENT PROMPT → reviewer", agent="reviewer", prompt=prompt.strip())
+
     model = get_chat_model("reviewer")
     structured_llm = model.with_structured_output(ReviewerOutput)
-    
+
     try:
         result = structured_llm.invoke(prompt)
         score = result.score
         notes = result.notes
-    except Exception:
+    except Exception as e:
         score = 0
         notes = f"Automated review failed to run ({str(e)[:100]}). Manual review required."
-        passed = False
+        gen_log("AGENT ERROR → reviewer LLM failed", error=str(e), notes=notes)
 
-        
     passed = score >= PASS_THRESHOLD
-    
+
+    gen_log(
+        "AGENT END ← reviewer",
+        reviewer_score=score,
+        reviewer_passed=passed,
+        reviewer_notes=notes,
+        next_hint=(
+            "persist"
+            if passed or state.get("reviewer_retry_count", 0) >= 2
+            else "retry_writer (increment_retry → writer)"
+        ),
+    )
     return {
         **state,
         "reviewer_score": score,
@@ -273,6 +357,15 @@ def reviewer_node(state: GenerationState) -> GenerationState:
 
 
 def persist_post_node(state: GenerationState) -> GenerationState:
+    gen_log(
+        "AGENT START → persist (save GeneratedPost + notify)",
+        generation_cycle_id=state.get("generation_cycle_id"),
+        workspace_id=state.get("workspace_id"),
+        content_type=state.get("content_type"),
+        reviewer_passed=state.get("reviewer_passed"),
+        reviewer_score=state.get("reviewer_score"),
+    )
+
     with SessionLocal() as db:
         workspace = db.query(Workspace).filter(
             Workspace.id == state["workspace_id"]
@@ -331,9 +424,18 @@ def persist_post_node(state: GenerationState) -> GenerationState:
 
     if require_human_approval:
         notify_post_ready_for_review(post_id)
+        notify_kind = "ready_for_review"
     else:
         notify_post_auto_approved(post_id)
+        notify_kind = "auto_approved"
 
+    gen_log(
+        "AGENT END ← persist → graph interrupts (interrupt_after=persist)",
+        post_id=post_id,
+        status=post_status,
+        scheduled_for=str(scheduled_for) if scheduled_for else None,
+        notification=notify_kind,
+    )
     return {
         **state,
         "post_id": post_id

@@ -8,6 +8,7 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from app.core.config import settings
 from app.services.generation.graph import get_compiled_graph
 from app.services.generation.state import GenerationState
+from app.services.generation.debug_log import gen_log
 
 logger = logging.getLogger(__name__)
 
@@ -51,13 +52,39 @@ async def _run_graph_async(workspace_id: str, generation_cycle_id: str):
         }
 
         config = {"configurable": {"thread_id": generation_cycle_id}}
+        gen_log(
+            "LIFECYCLE → graph.ainvoke START (fresh cycle)",
+            workspace_id=workspace_id,
+            generation_cycle_id=generation_cycle_id,
+            thread_id=generation_cycle_id,
+            initial_state_keys=list(state.keys()),
+            calendar_date=today,
+        )
         result = await graph.ainvoke(state, config=config)
+        gen_log(
+            "LIFECYCLE → graph.ainvoke END (interrupted after persist)",
+            workspace_id=workspace_id,
+            generation_cycle_id=generation_cycle_id,
+            post_id=result.get("post_id") if isinstance(result, dict) else None,
+            content_type=result.get("content_type") if isinstance(result, dict) else None,
+            reviewer_score=result.get("reviewer_score") if isinstance(result, dict) else None,
+            caption_preview=(
+                (result.get("caption") or "")[:120]
+                if isinstance(result, dict)
+                else None
+            ),
+        )
         return result
 
 
 def run_generation_cycle(workspace_id: str) -> dict:
     """Run one generation cycle for a workspace (sync entry for BackgroundTasks)."""
     generation_cycle_id = str(uuid.uuid4())
+    gen_log(
+        "LIFECYCLE → run_generation_cycle START",
+        workspace_id=workspace_id,
+        generation_cycle_id=generation_cycle_id,
+    )
     logger.info(
         "Starting generation cycle %s for workspace %s",
         generation_cycle_id,
@@ -67,6 +94,12 @@ def run_generation_cycle(workspace_id: str) -> dict:
     try:
         asyncio.run(_run_graph_async(workspace_id, generation_cycle_id))
         logger.info("Generation cycle %s complete.", generation_cycle_id)
+        gen_log(
+            "LIFECYCLE → run_generation_cycle COMPLETE",
+            workspace_id=workspace_id,
+            generation_cycle_id=generation_cycle_id,
+            status="completed",
+        )
         return {
             "status": "completed",
             "generation_cycle_id": generation_cycle_id,
@@ -78,6 +111,12 @@ def run_generation_cycle(workspace_id: str) -> dict:
             generation_cycle_id,
             e,
             exc_info=True,
+        )
+        gen_log(
+            "LIFECYCLE → run_generation_cycle FAILED",
+            workspace_id=workspace_id,
+            generation_cycle_id=generation_cycle_id,
+            error=str(e),
         )
         return {
             "status": "failed",
