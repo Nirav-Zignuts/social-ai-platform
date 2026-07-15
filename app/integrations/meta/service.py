@@ -129,7 +129,9 @@ class MetaService:
             refresh_token=None,
             expires_at=expires_at,
             page_id=selected_page.id,
+            page_name=selected_page.name,
             instagram_business_account_id=instagram_business_account_id,
+            profile_picture_url=profile.profile_picture_url,
             status="connected",
             connected_at=datetime.now(timezone.utc),
         )

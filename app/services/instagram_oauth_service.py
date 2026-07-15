@@ -116,11 +116,16 @@ class InstagramOAuthService:
                     "username": profile.username,
                     "name": profile.name,
                 }
-                # Keep local username/display in sync when Meta returns fresher data.
+                # Keep local username/display/avatar in sync when Meta returns fresher data.
                 if profile.username and profile.username != account.provider_username:
                     account.provider_username = profile.username
                 if profile.name and profile.name != account.display_name:
                     account.display_name = profile.name
+                if (
+                    profile.profile_picture_url
+                    and profile.profile_picture_url != account.profile_picture_url
+                ):
+                    account.profile_picture_url = profile.profile_picture_url
                 self.db.add(account)
                 self.db.commit()
                 self.db.refresh(account)
@@ -205,7 +210,9 @@ class InstagramOAuthService:
                     "refresh_token": account_data.refresh_token,
                     "expires_at": account_data.expires_at,
                     "page_id": account_data.page_id,
+                    "page_name": account_data.page_name,
                     "instagram_business_account_id": account_data.instagram_business_account_id,
+                    "profile_picture_url": account_data.profile_picture_url,
                     "status": ConnectedAccountStatus.CONNECTED.value,
                     "connected_at": account_data.connected_at,
                     "last_sync_at": None,

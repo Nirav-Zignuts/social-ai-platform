@@ -104,6 +104,8 @@ class ConnectedAccountData(BaseModel):
     refresh_token: str | None = None
     expires_at: datetime | None = None
     page_id: str
+    page_name: str | None = None
     instagram_business_account_id: str
+    profile_picture_url: str | None = None
     status: str
     connected_at: datetime
