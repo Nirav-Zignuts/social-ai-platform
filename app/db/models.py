@@ -18,3 +18,5 @@ from app.models.publishing_job import PublishingJob
 from app.models.notification import Notification
 from app.models.connected_account import ConnectedAccount
 from app.models.post_insight import PostInsight
+from app.models.onboarding_chat_session import OnboardingChatSession
+from app.models.onboarding_chat_message import OnboardingChatMessage

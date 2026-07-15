@@ -13,6 +13,7 @@ from app.api.v1.routes import (
     instagram_routes,
     google_oauth_routes,
     internal_cron_routes,
+    onboarding_chat_routes,
 )
 from app.core.exception_handlers import (
     request_validation_exception_handler,
@@ -57,6 +58,10 @@ app.include_router(
 )
 app.include_router(
     internal_cron_routes.router,
+    prefix=settings.API_PREFIX,
+)
+app.include_router(
+    onboarding_chat_routes.router,
     prefix=settings.API_PREFIX,
 )
 app.add_middleware(
