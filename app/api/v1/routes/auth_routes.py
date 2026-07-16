@@ -8,11 +8,12 @@ from sqlalchemy.orm import Session
 from app.api.v1.schemas.auth_schema import (
     LoginRequest,
     RegisterRequest,
-    TokenResponse,
     UserResponse,
     VerifyEmailRequest,
 )
 from app.common.messages import SuccessMessage, ErrorMessage, AuthMessages, ErrorMessages
+from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.db.session import get_db
 from app.services.auth import (
     AuthService,
@@ -39,8 +40,10 @@ router = APIRouter(
     summary="User Registration",
     description="Register a new user with email and password",
 )
+@limiter.limit(settings.RATE_LIMIT_AUTH)
 async def register(
-    request: RegisterRequest,
+    request: Request,
+    payload: RegisterRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
@@ -57,11 +60,12 @@ async def register(
 
     **Errors:**
     - 400: Email already exists or validation error
+    - 429: Too many requests
     - 500: Server error
     """
     try:
         auth_service = AuthService(db)
-        result = auth_service.register_user(request)
+        result = auth_service.register_user(payload)
 
         email_service = EmailService()
         verification_link = email_service.build_verification_link(
@@ -69,8 +73,8 @@ async def register(
         )
         background_tasks.add_task(
             email_service.send_verification_email_safe,
-            recipient=request.email,
-            full_name=request.full_name,
+            recipient=payload.email,
+            full_name=payload.full_name,
             verification_link=verification_link,
         )
 
@@ -103,8 +107,10 @@ async def register(
     summary="User Login",
     description="Authenticate user with email and password",
 )
+@limiter.limit(settings.RATE_LIMIT_AUTH)
 async def login(
-    request: LoginRequest,
+    request: Request,
+    payload: LoginRequest,
     db: Session = Depends(get_db),
 ):
     """
@@ -119,11 +125,12 @@ async def login(
 
     **Errors:**
     - 401: Invalid credentials
+    - 429: Too many requests
     - 500: Server error
     """
     try:
         auth_service = AuthService(db)
-        result = auth_service.login_user(request)
+        result = auth_service.login_user(payload)
 
         return SuccessMessage(
             message=AuthMessages.LOGIN_SUCCESS,
@@ -164,8 +171,10 @@ async def login(
     summary="Verify Email",
     description="Verify a user email address using the activation token",
 )
+@limiter.limit(settings.RATE_LIMIT_AUTH)
 async def verify_email(
-    request: VerifyEmailRequest,
+    request: Request,
+    payload: VerifyEmailRequest,
     db: Session = Depends(get_db),
 ):
     """
@@ -179,11 +188,12 @@ async def verify_email(
 
     **Errors:**
     - 401: Invalid or expired activation token
+    - 429: Too many requests
     - 500: Server error
     """
     try:
         auth_service = AuthService(db)
-        auth_service.verify_email(request.token)
+        auth_service.verify_email(payload.token)
 
         return SuccessMessage(
             message=AuthMessages.EMAIL_VERIFIED,
@@ -214,7 +224,9 @@ async def verify_email(
     summary="Refresh Access Token",
     description="Generate new access token using refresh token",
 )
+@limiter.limit(settings.RATE_LIMIT_AUTH_REFRESH)
 async def refresh_token(
+    request: Request,
     refresh_token: str,
     db: Session = Depends(get_db),
 ):
@@ -229,6 +241,7 @@ async def refresh_token(
 
     **Errors:**
     - 401: Invalid or expired refresh token
+    - 429: Too many requests
     - 500: Server error
     """
     try:
@@ -253,6 +266,7 @@ async def refresh_token(
 
 @router.get("/me", response_model=SuccessResponse, status_code=status.HTTP_200_OK)
 async def get_current_user(
+    request: Request,
     current_user: UserResponse = Depends(require_auth),
     db: Session = Depends(get_db),
 ):
@@ -264,6 +278,7 @@ async def get_current_user(
 
     **Errors:**
     - 401: Unauthorized access
+    - 429: Too many requests
     """
     auth_service = AuthService(db)
     return auth_service.get_user_by_id(current_user.get("user_id"))
@@ -289,6 +304,7 @@ async def logout(
 
     **Errors:**
     - 401: Unauthorized access
+    - 429: Too many requests
     """
     try:
         auth_service = AuthService(db)

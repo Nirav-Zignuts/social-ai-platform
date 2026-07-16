@@ -77,7 +77,17 @@ def http_exception_handler(_request: Request, exc: StarletteHTTPException) -> JS
     Handle Starlette/FastAPI HTTPException (e.g. 404, 403 from framework).
     AppException and subclasses are handled by app_exception_handler when
     registered before this.
+    RateLimitExceeded (429) is handled by rate_limit_exceeded_handler when registered.
     """
+    if exc.status_code == 429:
+        detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        payload = ErrorMessage(
+            message=ErrorMessages.RATE_LIMIT_EXCEEDED,
+            code=429,
+            details={"limit": detail},
+        )
+        return JSONResponse(status_code=429, content=payload.model_dump())
+
     detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
 
     return _error_response(status_code=exc.status_code, message=detail)

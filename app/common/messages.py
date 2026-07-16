@@ -85,6 +85,7 @@ class ErrorMessages:
     FORBIDDEN = "Forbidden access"
     RESOURCE_NOT_FOUND = "Resource not found"
     INVALID_REQUEST = "Invalid request"
+    RATE_LIMIT_EXCEEDED = "Too many requests. Please try again later."
     SERVER_ERROR = "Internal server error"
     TOKEN_EXPIRED = "Token has expired"
     INVALID_TOKEN_TYPE = "Invalid token type"

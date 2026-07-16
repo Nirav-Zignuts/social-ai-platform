@@ -31,6 +31,8 @@ durationpy==0.10
 ecdsa==0.19.2
 email-validator==2.3.0
 fastapi==0.139.0
+limits==5.8.0
+slowapi==0.1.10
 fastavro==1.12.2
 filelock==3.29.7
 filetype==1.2.0

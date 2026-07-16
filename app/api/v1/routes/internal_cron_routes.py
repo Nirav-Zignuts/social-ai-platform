@@ -1,10 +1,11 @@
 """Internal cron endpoints for scheduled generation and publishing."""
 
-from fastapi import APIRouter, BackgroundTasks, Depends, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 
 from app.common.messages import ErrorMessage, ErrorMessages, SuccessMessage
 from app.analytics.insight_sync import poll_insight_sync, sync_insights_for_recent_posts
 from app.analytics.profile_sync import poll_profile_sync, sync_profile_metrics_for_workspace
+from app.core.rate_limit import limiter
 from app.generation.tasks import poll_generation_due
 from app.middlewares.auth_middleware import require_cron_secret
 from app.publishing.tasks import poll_due_posts, publish_post
@@ -18,7 +19,8 @@ router = APIRouter(prefix="/internal", tags=["Internal Cron"])
     response_model=SuccessMessage,
     dependencies=[Depends(require_cron_secret)],
 )
-async def generate_content(background_tasks: BackgroundTasks):
+@limiter.exempt
+async def generate_content(request: Request, background_tasks: BackgroundTasks):
     """
     Cron: every 15 minutes.
     Stamp due workspaces and queue generation cycles as background jobs.
@@ -47,7 +49,8 @@ async def generate_content(background_tasks: BackgroundTasks):
     response_model=SuccessMessage,
     dependencies=[Depends(require_cron_secret)],
 )
-async def publish_content(background_tasks: BackgroundTasks):
+@limiter.exempt
+async def publish_content(request: Request, background_tasks: BackgroundTasks):
     """
     Cron: every 2 minutes.
     Find due approved posts and queue Instagram publishes as background jobs.
@@ -75,7 +78,8 @@ async def publish_content(background_tasks: BackgroundTasks):
     response_model=SuccessMessage,
     dependencies=[Depends(require_cron_secret)],
 )
-async def poll_profile_sync_route(background_tasks: BackgroundTasks):
+@limiter.exempt
+async def poll_profile_sync_route(request: Request, background_tasks: BackgroundTasks):
     """
     Cron: once per day (workspace-local).
     Snapshot Instagram profile metrics for connected workspaces.
@@ -103,7 +107,8 @@ async def poll_profile_sync_route(background_tasks: BackgroundTasks):
     response_model=SuccessMessage,
     dependencies=[Depends(require_cron_secret)],
 )
-async def poll_insight_sync_route(background_tasks: BackgroundTasks):
+@limiter.exempt
+async def poll_insight_sync_route(request: Request, background_tasks: BackgroundTasks):
     """
     Cron: every 4–6 hours.
     Refresh insights for posts published in the last 14 days and append snapshots.
