@@ -33,6 +33,8 @@
 4. **cron-job.org**
    - `POST https://<render>/api/v1/internal/generate-content` every 15 min
    - `POST https://<render>/api/v1/internal/publish-content` every 2 min
+   - `POST https://<render>/api/v1/internal/poll-profile-sync` **once daily** (profile follower snapshots)
+   - `POST https://<render>/api/v1/internal/poll-insight-sync` every **4–6 hours** (recent post insight history)
    - Header: `X-Cron-Secret: <CRON_SECRET>`
    - Enable retries (cold start on free tier)
 

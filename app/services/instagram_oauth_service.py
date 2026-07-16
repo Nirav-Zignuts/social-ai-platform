@@ -86,7 +86,7 @@ class InstagramOAuthService:
         return RedirectResponse(url=url, status_code=302)
 
     async def get_connection(self, workspace_id: UUID, user_id: UUID) -> dict:
-        self._get_owned_workspace(workspace_id, user_id)
+        workspace = self._get_owned_workspace(workspace_id, user_id)
         account = self.connected_account_repo.get_by_workspace_and_provider(
             workspace_id=workspace_id,
             provider=SocialProvider.INSTAGRAM.value,
@@ -126,7 +126,19 @@ class InstagramOAuthService:
                     and profile.profile_picture_url != account.profile_picture_url
                 ):
                     account.profile_picture_url = profile.profile_picture_url
-                self.db.add(account)
+
+                # Keep analytics dashboard in sync with Connected Account live metrics.
+                from app.analytics.profile_sync import upsert_today_profile_snapshot
+
+                upsert_today_profile_snapshot(
+                    self.db,
+                    workspace,
+                    followers_count=int(profile.followers_count or 0),
+                    follows_count=int(profile.follows_count or 0),
+                    media_count=int(profile.media_count or 0),
+                    account=account,
+                    source="connection_status",
+                )
                 self.db.commit()
                 self.db.refresh(account)
             except MetaIntegrationError as exc:

@@ -224,6 +224,97 @@ class MetaService:
         )
         return MetaMediaInsightsResponse.model_validate(data)
 
+    # If one metric is invalid for media type/API version, Meta rejects the whole batch.
+    # Fallback groups: try smaller sets, then per-metric (logged individually).
+    INSIGHT_METRIC_FALLBACK_GROUPS: tuple[str, ...] = (
+        "reach,saved,shares,views,total_interactions,profile_visits",
+        "reach,saved,shares,views,total_interactions",
+        "reach,saved,shares,views",
+        "reach,saved,shares",
+        "reach",
+    )
+
+    async def fetch_media_insights_resilient(
+        self,
+        media_id: str,
+        access_token: str,
+        *,
+        metrics: str,
+    ) -> tuple[dict[str, int | None], dict]:
+        """
+        Fetch insights with batch fallbacks. Returns (metric_map, debug_info).
+        Requires instagram_manage_insights on the page token (reconnect if missing).
+        """
+        from app.integrations.meta.exceptions import MetaAPIError
+
+        debug: dict = {"attempts": [], "merged_metrics": {}}
+        merged: dict[str, int | None] = {}
+
+        groups_to_try = [metrics, *self.INSIGHT_METRIC_FALLBACK_GROUPS]
+        seen_groups: set[str] = set()
+        for group in groups_to_try:
+            group = group.strip()
+            if not group or group in seen_groups:
+                continue
+            seen_groups.add(group)
+            try:
+                response = await self.get_media_insights(
+                    media_id,
+                    access_token,
+                    metrics=group,
+                )
+                batch_map = response.as_map()
+                merged.update({k: v for k, v in batch_map.items() if v is not None})
+                debug["attempts"].append(
+                    {"metrics": group, "status": "ok", "returned": list(batch_map.keys())}
+                )
+                if merged:
+                    break
+            except MetaAPIError as exc:
+                debug["attempts"].append(
+                    {
+                        "metrics": group,
+                        "status": "error",
+                        "error": str(exc),
+                        "response_body": getattr(exc, "response_body", None),
+                    }
+                )
+
+        # Per-metric probe for anything still missing (diagnostic; helps find scope/type issues).
+        wanted = [m.strip() for m in metrics.split(",") if m.strip()]
+        missing = [m for m in wanted if m not in merged]
+        if missing:
+            debug["per_metric_probes"] = []
+            for metric in missing:
+                try:
+                    response = await self.get_media_insights(
+                        media_id,
+                        access_token,
+                        metrics=metric,
+                    )
+                    value = response.as_map().get(metric)
+                    if value is not None:
+                        merged[metric] = value
+                    debug["per_metric_probes"].append(
+                        {"metric": metric, "status": "ok", "value": value}
+                    )
+                except MetaAPIError as exc:
+                    debug["per_metric_probes"].append(
+                        {
+                            "metric": metric,
+                            "status": "error",
+                            "error": str(exc),
+                            "response_body": getattr(exc, "response_body", None),
+                        }
+                    )
+
+        debug["merged_metrics"] = merged
+        print(
+            f"[meta] insights resilient merge media_id={media_id} "
+            f"merged={merged} attempts={len(debug['attempts'])}"
+        )
+        return merged, debug
+
     async def delete_media(self, media_id: str, access_token: str) -> dict:
         """Delete published IG media. Returns Graph success payload."""
         return await self._client.delete_media(media_id, access_token)

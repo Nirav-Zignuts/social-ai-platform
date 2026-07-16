@@ -54,3 +54,13 @@ class Workspace(BaseEntity):
         back_populates="workspace",
         cascade="all, delete-orphan",
     )
+    profile_metric_snapshots = relationship(
+        "ProfileMetricSnapshot",
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+    )
+    post_insight_snapshots = relationship(
+        "PostInsightSnapshot",
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+    )

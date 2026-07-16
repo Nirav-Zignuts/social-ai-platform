@@ -48,3 +48,8 @@ class GeneratedPost(BaseEntity):
         uselist=False,
         cascade="all, delete-orphan",
     )
+    insight_snapshots = relationship(
+        "PostInsightSnapshot",
+        back_populates="post",
+        cascade="all, delete-orphan",
+    )

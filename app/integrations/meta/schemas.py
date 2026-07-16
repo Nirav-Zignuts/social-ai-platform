@@ -56,12 +56,22 @@ class MetaInsightMetric(BaseModel):
     total_value: dict[str, Any] | None = None
 
     def extract_value(self) -> int | None:
-        if self.total_value and isinstance(self.total_value.get("value"), int):
-            return self.total_value["value"]
-        if self.values:
+        raw = None
+        if self.total_value and isinstance(self.total_value, dict):
+            raw = self.total_value.get("value")
+        if raw is None and self.values:
             raw = self.values[0].get("value")
-            if isinstance(raw, int):
-                return raw
+        if raw is None:
+            return None
+        if isinstance(raw, bool):
+            return None
+        if isinstance(raw, (int, float)):
+            return int(raw)
+        if isinstance(raw, str):
+            try:
+                return int(float(raw))
+            except ValueError:
+                return None
         return None
 
 

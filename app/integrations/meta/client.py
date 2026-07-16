@@ -1,5 +1,6 @@
 from typing import Any
 import json
+from pprint import pprint
 from urllib.parse import urlencode
 
 import httpx
@@ -7,6 +8,24 @@ import httpx
 from app.core.config import settings
 from app.integrations.meta.exceptions import MetaAPIError
 from app.integrations.meta.schemas import MetaGraphErrorBody
+
+
+def _safe_params_for_log(params: dict[str, Any] | None) -> dict[str, Any]:
+    if not params:
+        return {}
+    safe: dict[str, Any] = {}
+    for key, value in params.items():
+        if key == "access_token" and isinstance(value, str):
+            safe[key] = f"{value[:12]}...({len(value)} chars)" if value else None
+        else:
+            safe[key] = value
+    return safe
+
+
+def _log_meta_api(label: str, *, params: dict[str, Any] | None, body: dict[str, Any]) -> None:
+    print(f"[meta] {label} REQUEST params={_safe_params_for_log(params)}")
+    print(f"[meta] {label} RESPONSE:")
+    pprint(body)
 
 
 class MetaGraphClient:
@@ -38,6 +57,13 @@ class MetaGraphClient:
         if response.is_error or "error" in body:
             error = body.get("error", {}) if isinstance(body, dict) else {}
             message = error.get("message", "Meta Graph API request failed")
+            print(
+                "[meta] Graph API ERROR",
+                f"status={response.status_code}",
+                f"url={url}",
+                f"params={_safe_params_for_log(params)}",
+            )
+            pprint(body)
             raise MetaAPIError(
                 message=message,
                 status_code=response.status_code,
@@ -163,16 +189,16 @@ class MetaGraphClient:
         media_id: str,
         access_token: str,
     ) -> dict[str, Any]:
-        return await self.get(
-            media_id,
-            params={
-                "access_token": access_token,
-                "fields": (
-                    "id,caption,media_type,media_url,permalink,timestamp,"
-                    "like_count,comments_count"
-                ),
-            },
-        )
+        params = {
+            "access_token": access_token,
+            "fields": (
+                "id,caption,media_type,media_url,permalink,timestamp,"
+                "like_count,comments_count"
+            ),
+        }
+        body = await self.get(media_id, params=params)
+        _log_meta_api(f"GET /{media_id} (media fields)", params=params, body=body)
+        return body
 
     async def get_media_insights(
         self,
@@ -181,13 +207,18 @@ class MetaGraphClient:
         *,
         metrics: str,
     ) -> dict[str, Any]:
-        return await self.get(
-            f"{media_id}/insights",
-            params={
-                "metric": metrics,
-                "access_token": access_token,
-            },
-        )
+        params = {
+            "metric": metrics,
+            "access_token": access_token,
+        }
+        path = f"{media_id}/insights"
+        try:
+            body = await self.get(path, params=params)
+            _log_meta_api(f"GET /{path} metric={metrics}", params=params, body=body)
+            return body
+        except MetaAPIError:
+            # Error body already printed in _request
+            raise
 
     async def create_media_container(
         self,
