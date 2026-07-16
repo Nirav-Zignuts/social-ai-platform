@@ -4,7 +4,6 @@ from urllib.parse import quote, urlencode
 import requests
 
 from app.core.config import settings
-from app.services.generation.debug_log import gen_log
 from app.utils.cloudinary_service import CloudinaryService
 
 logger = logging.getLogger(__name__)
@@ -126,15 +125,6 @@ def generate_image(prompt: str, workspace_id: str, generation_cycle_id: str) -> 
         last_error_body = ""
 
         for idx, (tier_name, url, headers) in enumerate(candidates):
-            gen_log(
-                "IMAGE → Pollinations request",
-                workspace_id=workspace_id,
-                generation_cycle_id=generation_cycle_id,
-                model=model,
-                tier=tier_name,
-                prompt=final_prompt,
-                url_preview=url[:200] + ("..." if len(url) > 200 else ""),
-            )
             try:
                 response = _fetch_image(url, headers)
             except requests.RequestException as exc:
@@ -176,12 +166,6 @@ def generate_image(prompt: str, workspace_id: str, generation_cycle_id: str) -> 
                 "(post will continue without image). Last: %s",
                 last_error_body,
             )
-            gen_log(
-                "IMAGE → FAILED soft (continuing without image)",
-                workspace_id=workspace_id,
-                generation_cycle_id=generation_cycle_id,
-                last_error=last_error_body,
-            )
             return None
 
         cloudinary = CloudinaryService()
@@ -190,18 +174,7 @@ def generate_image(prompt: str, workspace_id: str, generation_cycle_id: str) -> 
             folder=f"generated_images/{workspace_id}",
             public_id=str(generation_cycle_id),
         )
-        gen_log(
-            "IMAGE → Cloudinary upload OK",
-            secure_url=secure_url,
-            pollinations_tier=used_tier,
-        )
         return secure_url
     except Exception:
         logger.exception("Failed to generate or upload image to Cloudinary")
-        gen_log(
-            "IMAGE → FAILED",
-            workspace_id=workspace_id,
-            generation_cycle_id=generation_cycle_id,
-            prompt=prompt,
-        )
         return None

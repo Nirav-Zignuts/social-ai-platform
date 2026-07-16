@@ -98,14 +98,6 @@ class AnalyticsService:
             .first()
         )
 
-        print(
-            f"[analytics/overview] workspace={workspace_id} period={period} "
-            f"latest="
-            f"{'followers=' + str(latest_profile.followers_count) if latest_profile else 'NONE'} "
-            f"previous_day="
-            f"{'followers=' + str(previous_day_profile.followers_count) if previous_day_profile else 'NONE'}"
-        )
-
         followers_change = None
         followers_change_pct = None
         if latest_profile and previous_day_profile:

@@ -1,7 +1,6 @@
 import os
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from app.services.generation.debug_log import gen_log
 
 # Conversational onboarding always uses Gemini (structured JSON turns).
 ONBOARDING_PURPOSES = frozenset({"onboarding_assistant", "onboarding_synthesizer"})
@@ -44,13 +43,6 @@ def get_chat_model(purpose: str) -> BaseChatModel:
     else:
         model_name = "unknown"
 
-    gen_log(
-        "LLM → get_chat_model",
-        agent_purpose=purpose,
-        provider=provider,
-        model=model_name,
-        temperature=temperature,
-    )
 
     if provider == "openai":
         from langchain_openai import ChatOpenAI

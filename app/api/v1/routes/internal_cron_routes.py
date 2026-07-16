@@ -8,7 +8,6 @@ from app.analytics.profile_sync import poll_profile_sync, sync_profile_metrics_f
 from app.generation.tasks import poll_generation_due
 from app.middlewares.auth_middleware import require_cron_secret
 from app.publishing.tasks import poll_due_posts, publish_post
-from app.services.generation.debug_log import gen_log
 from app.services.generation_tasks import run_generation_cycle
 
 router = APIRouter(prefix="/internal", tags=["Internal Cron"])
@@ -26,11 +25,7 @@ async def generate_content(background_tasks: BackgroundTasks):
     """
     try:
         result = poll_generation_due()
-        gen_log(
-            "CRON → /internal/generate-content",
-            enqueued=result.get("enqueued"),
-            workspace_ids=result.get("workspace_ids"),
-        )
+
         for workspace_id in result["workspace_ids"]:
             background_tasks.add_task(run_generation_cycle, workspace_id)
 
@@ -87,11 +82,6 @@ async def poll_profile_sync_route(background_tasks: BackgroundTasks):
     """
     try:
         result = poll_profile_sync()
-        gen_log(
-            "CRON → /internal/poll-profile-sync",
-            enqueued=result.get("enqueued"),
-            workspace_ids=result.get("workspace_ids"),
-        )
         for workspace_id in result["workspace_ids"]:
             background_tasks.add_task(sync_profile_metrics_for_workspace, workspace_id)
 
@@ -120,7 +110,6 @@ async def poll_insight_sync_route(background_tasks: BackgroundTasks):
     """
     try:
         result = poll_insight_sync()
-        gen_log("CRON → /internal/poll-insight-sync", enqueued=result.get("enqueued"))
         background_tasks.add_task(sync_insights_for_recent_posts)
 
         return SuccessMessage(

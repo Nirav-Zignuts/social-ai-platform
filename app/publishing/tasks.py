@@ -27,7 +27,6 @@ def poll_due_posts() -> dict:
     db = SessionLocal()
     try:
         due_ids = find_due_post_ids(db)
-        print(f"Found {len(due_ids)} due posts")
         post_ids = [str(pid) for pid in due_ids]
         logger.info("poll_due_posts found %s posts", len(post_ids))
         return {"enqueued": len(post_ids), "post_ids": post_ids}

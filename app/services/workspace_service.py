@@ -76,7 +76,6 @@ class WorkspaceService:
 
     def create_workspace(self, payload: WorkspaceCreate, user_id: UUID) -> dict:
         slug = self._generate_unique_slug(payload.name)
-        print(f"Generated slug: {slug}")  # Debugging line
         workspace = Workspace(
             owner_id=user_id,
             name=payload.name,
@@ -86,7 +85,6 @@ class WorkspaceService:
             generation_lead_hours=payload.generation_lead_hours or 12,
             require_human_approval=payload.require_human_approval,
         )
-        print(f"Creating workspace: {workspace.name}")  # Debugging line
         self.workspace_repo.create(workspace)
         return {"workspace": workspace}
 
@@ -213,8 +211,7 @@ class WorkspaceService:
             doc.cloudinary_public_id = upload_result.public_id
             self._advance_onboarding_status(workspace, "knowledge_added")
             self.db.commit()
-            self.db.refresh(doc)
-            print(f"Document uploaded: {doc.id}")
+            self.db.refresh(doc)    
 
             # Indexing is scheduled by the route via FastAPI BackgroundTasks.
             return {"document": doc}
@@ -255,7 +252,6 @@ class WorkspaceService:
         self.knowledge_repo.delete(doc)
 
     def trigger_generation_cycle(self, workspace_id: UUID, user_id: UUID) -> dict:
-        print(f"Triggering generation cycle for workspace: {workspace_id}")
         workspace = self._get_workspace_or_404(workspace_id, user_id)
 
         from zoneinfo import ZoneInfo
@@ -267,7 +263,6 @@ class WorkspaceService:
         self.workspace_repo.update(workspace)
 
         # Actual run is scheduled by the route via FastAPI BackgroundTasks.
-        print(f"Queuing generation cycle for workspace: {workspace.id}")
         return {
             "workspace_id": str(workspace.id),
             "status": "queued",

@@ -16,9 +16,7 @@ def poll_generation_due() -> dict:
     db = SessionLocal()
     enqueued: list[str] = []
     try:
-        print("Finding generation due workspaces")
         due = find_generation_due_workspaces(db)
-        print(f"Found {len(due)} workspaces")
         for workspace, local_today in due:
             workspace.last_generation_date = local_today
             db.add(workspace)

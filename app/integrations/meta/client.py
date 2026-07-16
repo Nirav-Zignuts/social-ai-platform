@@ -1,6 +1,5 @@
 from typing import Any
 import json
-from pprint import pprint
 from urllib.parse import urlencode
 
 import httpx
@@ -20,12 +19,6 @@ def _safe_params_for_log(params: dict[str, Any] | None) -> dict[str, Any]:
         else:
             safe[key] = value
     return safe
-
-
-def _log_meta_api(label: str, *, params: dict[str, Any] | None, body: dict[str, Any]) -> None:
-    print(f"[meta] {label} REQUEST params={_safe_params_for_log(params)}")
-    print(f"[meta] {label} RESPONSE:")
-    pprint(body)
 
 
 class MetaGraphClient:
@@ -57,13 +50,7 @@ class MetaGraphClient:
         if response.is_error or "error" in body:
             error = body.get("error", {}) if isinstance(body, dict) else {}
             message = error.get("message", "Meta Graph API request failed")
-            print(
-                "[meta] Graph API ERROR",
-                f"status={response.status_code}",
-                f"url={url}",
-                f"params={_safe_params_for_log(params)}",
-            )
-            pprint(body)
+
             raise MetaAPIError(
                 message=message,
                 status_code=response.status_code,
@@ -197,7 +184,6 @@ class MetaGraphClient:
             ),
         }
         body = await self.get(media_id, params=params)
-        _log_meta_api(f"GET /{media_id} (media fields)", params=params, body=body)
         return body
 
     async def get_media_insights(
@@ -213,11 +199,9 @@ class MetaGraphClient:
         }
         path = f"{media_id}/insights"
         try:
-            body = await self.get(path, params=params)
-            _log_meta_api(f"GET /{path} metric={metrics}", params=params, body=body)
+            body = await self.get(path, params=params)      
             return body
         except MetaAPIError:
-            # Error body already printed in _request
             raise
 
     async def create_media_container(

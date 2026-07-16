@@ -59,16 +59,9 @@ class InstagramOAuthService:
 
         self.db.add(workspace)
         self.db.commit()
-        print(
-            "[instagram_oauth] onboarding_status ->",
-            workspace.onboarding_status,
-            "workspace_id=",
-            workspace_id,
-        )
 
     def _redirect_success(self, workspace_id: UUID) -> RedirectResponse:
         url = f"{self._settings_redirect_url(workspace_id)}?instagram=connected"
-        print("[instagram_oauth] redirect success ->", url)
         return RedirectResponse(url=url, status_code=302)
 
     def _redirect_error(
@@ -82,7 +75,6 @@ class InstagramOAuthService:
             else f"{self._fallback_redirect_url()}?instagram=error"
         )
         url = f"{base}&error={quote(error)}"
-        print("[instagram_oauth] redirect error ->", url)
         return RedirectResponse(url=url, status_code=302)
 
     async def get_connection(self, workspace_id: UUID, user_id: UUID) -> dict:
@@ -159,7 +151,6 @@ class InstagramOAuthService:
             user_id=user_id,
         )
         authorization_url = self.meta_service.generate_oauth_url(state)
-        print("[instagram_oauth] authorization_url ->", authorization_url)
         return {"authorization_url": authorization_url}
 
     async def handle_callback(
@@ -194,21 +185,11 @@ class InstagramOAuthService:
 
         try:
             short_lived = await self.meta_service.exchange_code(code)
-            print("[instagram_oauth] short-lived token ->", short_lived)
-            print("[instagram_oauth] short-lived token exchanged")
             long_lived = await self.meta_service.exchange_long_lived_token(
                 short_lived.access_token
             )
-            print("[instagram_oauth] long-lived token exchanged, expires_in=", long_lived.expires_in)
-            print("[instagram_oauth] long-lived token ->", long_lived)
-            print("[instagram_oauth] long-lived token ->", long_lived.access_token)
             account_data = await self.meta_service.resolve_instagram_business_connection(
                 user_access_token=long_lived.access_token,
-            )
-            print(
-                "[instagram_oauth] resolved IG account:",
-                account_data.provider_username,
-                account_data.provider_account_id,
             )
             saved = self.connected_account_repo.save_connected_account(
                 workspace_id=workspace_id,
@@ -229,30 +210,14 @@ class InstagramOAuthService:
                     "last_sync_at": None,
                 },
             )
-            print(
-                "[instagram_oauth] saved connected_account id=",
-                saved.id,
-                "workspace_id=",
-                workspace_id,
-            )
 
             # After DB insert: inspect stored page token and persist unix expiry.
             try:
                 debug_payload = await self.meta_service.debug_token(saved.access_token)
                 expires_at = MetaService.expires_at_from_debug(debug_payload)
-                print(
-                    "[instagram_oauth] debug_token unix -> expires_at=",
-                    expires_at,
-                    "stored for connected_account id=",
-                    saved.id,
-                )
                 if expires_at is not None:
                     saved.expires_at = expires_at
                     self.connected_account_repo.update(saved)
-                    print(
-                        "[instagram_oauth] persisted expires_at=",
-                        saved.expires_at,
-                    )
                 else:
                     print(
                         "[instagram_oauth] no usable unix expiry "
@@ -273,7 +238,6 @@ class InstagramOAuthService:
             return self._redirect_error(workspace_id, "Instagram connection failed.")
 
         self._mark_instagram_connected(workspace_id)
-        print("[instagram_oauth] success redirect workspace_id=", workspace_id)
         return self._redirect_success(workspace_id)
 
     async def disconnect(self, workspace_id: UUID, user_id: UUID) -> dict:

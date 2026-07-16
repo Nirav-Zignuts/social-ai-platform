@@ -36,9 +36,7 @@ def compute_target_generation_time(
     """
     if local_now.tzinfo is None:
         raise ValueError("local_now must be timezone-aware")
-    print(f"Local now: {local_now}")
     local_today = local_now.date()
-    print(f"Local today: {local_today}")
     publish_slot_today = datetime.combine(
         local_today,
         preferred_post_time,
@@ -62,22 +60,17 @@ def is_generation_due(
         return False, None, None
 
     local_now = get_workspace_local_now(workspace, utc_now=utc_now)
-    print(f"Local now: {local_now}")
     local_today = local_now.date()
     lead_hours = workspace.generation_lead_hours or 12
-    print(f"Lead hours: {lead_hours}")
     target = compute_target_generation_time(
         local_now=local_now,
         preferred_post_time=workspace.preferred_post_time,
         generation_lead_hours=lead_hours,
     )
-    print(f"Target: {target}")
     if workspace.last_generation_date == local_today:
-        print(f"Last generation date: {workspace.last_generation_date}")
         return False, local_today, target
 
     if local_now >= target:
-        print(f"Local now: {local_now} is greater than target: {target}")
         return True, local_today, target
 
     return False, local_today, target
@@ -104,16 +97,10 @@ def find_generation_due_workspaces(
         )
         .all()
     )
-    print("workspaces query")
-    print(f"Found {len(workspaces)} workspaces")
-    print(workspaces)
 
     due: list[tuple[Workspace, date]] = []
     for workspace in workspaces:
-        print(f"Checking workspace: {workspace.name}")
         is_due, local_today, _target = is_generation_due(workspace, utc_now=utc_now)
-        print(f"Is due: {is_due}, local today: {local_today}")
         if is_due and local_today is not None:
-            print(f"Adding workspace: {workspace.name} to due list")
             due.append((workspace, local_today))
     return due

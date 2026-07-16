@@ -74,10 +74,6 @@ def upsert_today_profile_snapshot(
         existing.recorded_at = now
         db.add(existing)
         action = "updated"
-        print(
-            f"[profile_sync] UPDATE today's snapshot source={source} "
-            f"workspace={workspace.id} followers {old_followers} → {followers}"
-        )
         snapshot = existing
     else:
         snapshot = ProfileMetricSnapshot(
@@ -89,10 +85,6 @@ def upsert_today_profile_snapshot(
         )
         db.add(snapshot)
         action = "created"
-        print(
-            f"[profile_sync] CREATE snapshot source={source} "
-            f"workspace={workspace.id} followers={followers}"
-        )
 
     if account is not None:
         account.last_sync_at = now
@@ -116,42 +108,24 @@ async def _sync_profile_metrics_async(workspace_id: str) -> dict:
             .first()
         )
         if not workspace:
-            print(f"[profile_sync] SKIP workspace={workspace_id} reason=workspace_not_found")
             return {"status": "skipped", "reason": "workspace_not_found"}
 
         local_today = get_workspace_local_now(workspace).date()
         existing = _get_snapshot_for_local_day(db, workspace, local_today)
-        print(
-            f"[profile_sync] START workspace={workspace_id} local_today={local_today} "
-            f"existing_today="
-            f"{'followers=' + str(existing.followers_count) if existing else 'none'}"
-        )
 
         try:
             account = get_valid_token(db, wid)
         except InstagramTokenExpiredError as exc:
             logger.warning("profile_sync skip workspace=%s: %s", workspace_id, exc)
-            print(f"[profile_sync] SKIP workspace={workspace_id} reason=token_invalid")
             return {"status": "skipped", "reason": "token_invalid"}
 
         try:
-            print(
-                f"[profile_sync] calling Meta get_instagram_profile "
-                f"ig_user_id={account.instagram_business_account_id}"
-            )
             profile = await meta_service.get_instagram_profile(
                 account.instagram_business_account_id,
                 account.access_token,
             )
-            print(
-                f"[profile_sync] Meta profile response "
-                f"followers={profile.followers_count} "
-                f"following={profile.follows_count} "
-                f"media_count={profile.media_count}"
-            )
         except MetaIntegrationError as exc:
             logger.warning("profile_sync failed workspace=%s: %s", workspace_id, exc)
-            print(f"[profile_sync] FAILED workspace={workspace_id}: {exc}")
             return {"status": "failed", "reason": str(exc)}
         except httpx.HTTPError as exc:
             logger.warning(
@@ -159,7 +133,6 @@ async def _sync_profile_metrics_async(workspace_id: str) -> dict:
                 workspace_id,
                 exc,
             )
-            print(f"[profile_sync] NETWORK ERROR workspace={workspace_id}: {exc!r}")
             return {"status": "failed", "reason": f"network_error: {type(exc).__name__}"}
 
         snapshot, action = upsert_today_profile_snapshot(

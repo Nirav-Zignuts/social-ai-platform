@@ -143,9 +143,7 @@ class AuthService:
             InvalidCredentialsError: If email not found or password incorrect
         """
         # Get user by email
-        print(f"Attempting login for email: {request.email}")  # Debugging statement
         user = self.user_repo.get_by_email(request.email)
-        print(f"User found: {user}")  # Debugging statement
         if not user:
             raise InvalidCredentialsError(ErrorMessages.INVALID_CREDENTIALS)
 
@@ -159,7 +157,6 @@ class AuthService:
             raise InvalidCredentialsError(ErrorMessages.INVALID_CREDENTIALS)
 
         # Verify password
-        print(f"Verifying password for user ID: {user.id}")  # Debugging statement
         if not verify_password(request.password, auth_provider.password_hash):
             raise InvalidCredentialsError(ErrorMessages.INVALID_CREDENTIALS)
 

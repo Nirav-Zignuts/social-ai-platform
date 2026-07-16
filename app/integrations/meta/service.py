@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from pprint import pprint
+
 
 from app.core.config import settings
 from app.integrations.meta.client import MetaGraphClient
@@ -44,8 +44,8 @@ class MetaService:
     async def debug_token(self, input_token: str) -> dict:
         """Call Meta GET /debug_token and return the full Graph payload."""
         data = await self._client.debug_token(input_token)
-        print("[meta] debug_token FULL response:")
-        pprint(data)
+
+
         return data
 
     @staticmethod
@@ -106,15 +106,7 @@ class MetaService:
         token_expires_in: int | None = None,
     ) -> ConnectedAccountData:
         pages_response = await self.get_pages(user_access_token)
-        print("[meta] me/accounts page count:", len(pages_response.data))
-        for page in pages_response.data:
-            print(
-                "[meta] page:",
-                page.id,
-                page.name,
-                "instagram_business_account=",
-                page.instagram_business_account,
-            )
+        
 
         if not pages_response.data:
             raise FacebookPageNotFound("No Facebook Pages found for this Meta account.")
@@ -129,7 +121,6 @@ class MetaService:
 
             if not ig_id:
                 ig_id = await self.get_instagram_business_account(page.id, page.access_token)
-                print("[meta] fetched instagram_business_account for page", page.id, "->", ig_id)
 
             if ig_id:
                 selected_page = page
@@ -137,7 +128,6 @@ class MetaService:
                 break
 
         if not selected_page or not instagram_business_account_id:
-            print("[meta] no page with linked Instagram Business account found")
             raise InstagramAccountNotFound(
                 "No Instagram Business Account is linked to your Facebook Pages."
             )
@@ -146,7 +136,6 @@ class MetaService:
             instagram_business_account_id,
             selected_page.access_token,
         )
-        print("[meta] instagram profile:", profile.id, profile.username, profile.name)
 
         # expires_at is filled after connect via /debug_token (see oauth callback).
         return ConnectedAccountData(
@@ -309,10 +298,6 @@ class MetaService:
                     )
 
         debug["merged_metrics"] = merged
-        print(
-            f"[meta] insights resilient merge media_id={media_id} "
-            f"merged={merged} attempts={len(debug['attempts'])}"
-        )
         return merged, debug
 
     async def delete_media(self, media_id: str, access_token: str) -> dict:

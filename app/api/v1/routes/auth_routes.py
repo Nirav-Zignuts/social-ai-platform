@@ -67,7 +67,6 @@ async def register(
         verification_link = email_service.build_verification_link(
             result["activation_token"]
         )
-        print(f"Verification link: {verification_link}")  # For debugging purposes
         background_tasks.add_task(
             email_service.send_verification_email_safe,
             recipient=request.email,
@@ -266,7 +265,6 @@ async def get_current_user(
     **Errors:**
     - 401: Unauthorized access
     """
-    print(current_user)
     auth_service = AuthService(db)
     return auth_service.get_user_by_id(current_user.get("user_id"))
 
