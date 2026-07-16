@@ -76,6 +76,12 @@ class Settings(BaseSettings):
 
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
+    # SlowAPI rate limits (per client IP). Use redis://... for multi-worker deploys.
+    RATE_LIMIT_STORAGE_URI: str = os.getenv("RATE_LIMIT_STORAGE_URI", "memory://")
+    RATE_LIMIT_DEFAULT: str = os.getenv("RATE_LIMIT_DEFAULT", "120/minute")
+    RATE_LIMIT_AUTH: str = os.getenv("RATE_LIMIT_AUTH", "3/minute")
+    RATE_LIMIT_AUTH_REFRESH: str = os.getenv("RATE_LIMIT_AUTH_REFRESH", "20/minute")
+
     META_APP_ID: str = os.getenv("META_APP_ID", "")
     META_APP_SECRET: str = os.getenv("META_APP_SECRET", "")
     META_REDIRECT_URI: str = os.getenv(
