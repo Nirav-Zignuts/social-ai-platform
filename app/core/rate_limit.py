@@ -36,14 +36,9 @@ async def rate_limit_exceeded_handler(
     exc: RateLimitExceeded,
 ) -> JSONResponse:
     """Return standard ErrorMessage JSON for HTTP 429."""
-    detail = getattr(exc, "detail", None) or str(exc)
-
     payload = ErrorMessage(
         message=ErrorMessages.RATE_LIMIT_EXCEEDED,
         code=429,
-        details={
-            "limit": detail,
-            "path": request.url.path,
-        },
+        details=None,
     )
     return JSONResponse(status_code=429, content=payload.model_dump())
