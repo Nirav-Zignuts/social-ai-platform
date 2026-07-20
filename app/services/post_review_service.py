@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.common.messages import ErrorMessages
-from app.core.enums import GeneratedPostStatus, PostReviewAction
+from app.core.enums import GeneratedPostStatus, PostReviewAction, WorkspaceStatus
 from app.models.generated_post import GeneratedPost
 from app.models.post_review import PostReview
 from app.models.workspace import Workspace
@@ -28,6 +28,21 @@ class PostReviewService:
         if workspace.owner_id != user_id:
             raise HTTPException(status_code=403, detail=ErrorMessages.FORBIDDEN)
         return workspace
+
+    def _assert_workspace_active(self, workspace: Workspace) -> None:
+        if workspace.status == WorkspaceStatus.LOCKED_OVER_LIMIT.value:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "This workspace is locked because it exceeds your plan limit. "
+                    "Choose it as an active workspace in Billing, or upgrade your plan."
+                ),
+            )
+        if workspace.status != WorkspaceStatus.ACTIVE.value:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Workspace is not active (status={workspace.status}).",
+            )
 
     def _get_post_or_404(self, workspace_id: UUID, post_id: UUID) -> GeneratedPost:
         post = (
@@ -68,6 +83,7 @@ class PostReviewService:
 
     def approve(self, workspace_id: UUID, post_id: UUID, user_id: UUID) -> GeneratedPost:
         workspace = self._get_workspace_or_403(workspace_id, user_id)
+        self._assert_workspace_active(workspace)
         post = self._get_post_or_404(workspace_id, post_id)
 
         self._insert_review(post, user_id, PostReviewAction.APPROVE)
@@ -106,7 +122,8 @@ class PostReviewService:
         user_id: UUID,
         feedback: str,
     ) -> GeneratedPost:
-        self._get_workspace_or_403(workspace_id, user_id)
+        workspace = self._get_workspace_or_403(workspace_id, user_id)
+        self._assert_workspace_active(workspace)
         post = self._get_post_or_404(workspace_id, post_id)
 
         if post.regenerate_count >= MAX_TOTAL_REGENERATIONS:

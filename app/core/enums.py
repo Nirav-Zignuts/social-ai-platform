@@ -46,6 +46,7 @@ class NotificationType(str, Enum):
     POST_PUBLISH_FAILED = "post_publish_failed"
     POST_PUBLISH_SUCCEEDED = "post_publish_succeeded"
     BILLING_PAYMENT_FAILED = "billing_payment_failed"
+    BILLING_WORKSPACES_LOCKED = "billing_workspaces_locked"
 
 
 class NotificationChannel(str, Enum):
@@ -61,3 +62,12 @@ class ConnectedAccountStatus(str, Enum):
     CONNECTED = "connected"
     DISCONNECTED = "disconnected"
     ERROR = "error"
+
+
+class WorkspaceStatus(str, Enum):
+    """Workspace lifecycle status (string column; not a Postgres enum)."""
+
+    ACTIVE = "active"
+    # Exceeds plan workspace_limit after downgrade — skipped by gen/publish pollers.
+    LOCKED_OVER_LIMIT = "locked_over_limit"
+    DELETED = "deleted"

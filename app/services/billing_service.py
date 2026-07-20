@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
-from app.core.enums import NotificationChannel, NotificationType
+from app.core.enums import NotificationChannel, NotificationType, WorkspaceStatus
 from app.models.subscription import PaymentEvent, Subscription, SubscriptionPlan
 from app.models.user import User
 from app.models.workspace import Workspace
@@ -64,24 +64,15 @@ def get_effective_entitlement(
     Resolve the plan that currently governs workspace limits.
 
     - No subscription row → Free plan (default state, not an error).
-    - active / past_due → that plan.
-    - cancelled but current_period_end still in the future → keep paid access until period end.
-    - otherwise → Free plan.
+    - active / past_due → that plan (past_due keeps access during payment recovery).
+    - cancelled / expired / pending → Free plan for limits (locks apply after cancel webhook).
     """
     free = get_free_plan(db)
     sub = get_user_subscription(db, user_id)
     if not sub or not sub.plan:
         return free, None
 
-    now = datetime.now(timezone.utc)
     if sub.status in ENTITLED_STATUSES:
-        return sub.plan, sub
-
-    if (
-        sub.status == "cancelled"
-        and sub.current_period_end is not None
-        and sub.current_period_end > now
-    ):
         return sub.plan, sub
 
     return free, sub
@@ -99,9 +90,121 @@ def count_user_workspaces(db: Session, user_id: UUID) -> int:
         .filter(
             Workspace.owner_id == user_id,
             Workspace.is_deleted.is_(False),
+            Workspace.status != WorkspaceStatus.DELETED.value,
         )
         .count()
     )
+
+
+def _list_user_workspaces(db: Session, user_id: UUID) -> list[Workspace]:
+    return (
+        db.query(Workspace)
+        .filter(
+            Workspace.owner_id == user_id,
+            Workspace.is_deleted.is_(False),
+            Workspace.status != WorkspaceStatus.DELETED.value,
+        )
+        .order_by(Workspace.created_at.desc())
+        .all()
+    )
+
+
+def sync_workspace_entitlement(
+    db: Session,
+    user_id: UUID,
+    *,
+    notify: bool = True,
+) -> dict:
+    """
+    Align workspace statuses with the user's effective plan limit.
+
+    - Unlimited plan → unlock all locked_over_limit workspaces.
+    - Finite limit → keep up to `limit` workspaces active (newest first if auto),
+      lock the rest as locked_over_limit.
+    """
+    plan, _sub = get_effective_entitlement(db, user_id)
+    limit = plan.workspace_limit
+    workspaces = _list_user_workspaces(db, user_id)
+
+    if limit is None:
+        unlocked = 0
+        for ws in workspaces:
+            if ws.status == WorkspaceStatus.LOCKED_OVER_LIMIT.value:
+                ws.status = WorkspaceStatus.ACTIVE.value
+                db.add(ws)
+                unlocked += 1
+        if unlocked:
+            db.flush()
+        return {
+            "action": "unlocked_all",
+            "active": len(workspaces),
+            "locked": 0,
+            "limit": None,
+        }
+
+    # Prefer keeping already-active workspaces; fill remaining slots with newest locked ones.
+    active = [w for w in workspaces if w.status == WorkspaceStatus.ACTIVE.value]
+    locked = [w for w in workspaces if w.status == WorkspaceStatus.LOCKED_OVER_LIMIT.value]
+    other = [
+        w
+        for w in workspaces
+        if w.status
+        not in (
+            WorkspaceStatus.ACTIVE.value,
+            WorkspaceStatus.LOCKED_OVER_LIMIT.value,
+        )
+    ]
+
+    keep: list[Workspace] = []
+    # Newest-first among currently active.
+    active_sorted = sorted(active, key=lambda w: w.created_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    keep.extend(active_sorted[:limit])
+    if len(keep) < limit:
+        locked_sorted = sorted(
+            locked,
+            key=lambda w: w.created_at or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
+        for w in locked_sorted:
+            if len(keep) >= limit:
+                break
+            keep.append(w)
+    if len(keep) < limit:
+        for w in other:
+            if len(keep) >= limit:
+                break
+            keep.append(w)
+
+    keep_ids = {w.id for w in keep}
+    newly_locked = 0
+    for ws in workspaces:
+        if ws.id in keep_ids:
+            if ws.status != WorkspaceStatus.ACTIVE.value:
+                ws.status = WorkspaceStatus.ACTIVE.value
+                db.add(ws)
+        else:
+            if ws.status != WorkspaceStatus.LOCKED_OVER_LIMIT.value:
+                ws.status = WorkspaceStatus.LOCKED_OVER_LIMIT.value
+                db.add(ws)
+                newly_locked += 1
+
+    db.flush()
+
+    locked_count = sum(
+        1 for w in workspaces if w.status == WorkspaceStatus.LOCKED_OVER_LIMIT.value
+    )
+    active_count = sum(1 for w in workspaces if w.status == WorkspaceStatus.ACTIVE.value)
+
+    if notify and newly_locked > 0:
+        _notify_workspaces_locked(db, user_id, newly_locked=newly_locked, limit=limit)
+
+    return {
+        "action": "synced",
+        "active": active_count,
+        "locked": locked_count,
+        "limit": limit,
+        "newly_locked": newly_locked,
+    }
 
 
 def assert_can_create_workspace(db: Session, user_id: UUID) -> None:
@@ -114,7 +217,7 @@ def assert_can_create_workspace(db: Session, user_id: UUID) -> None:
             status_code=403,
             detail=(
                 f"Workspace limit reached ({current}/{limit}). "
-                "Upgrade your plan to create more workspaces."
+                "Upgrade your plan or delete a workspace to create more."
             ),
         )
 
@@ -135,10 +238,22 @@ class BillingService:
 
     def get_status(self, user_id: UUID) -> dict:
         plan, sub = get_effective_entitlement(self.db, user_id)
-        workspace_count = count_user_workspaces(self.db, user_id)
+        workspaces = _list_user_workspaces(self.db, user_id)
+        workspace_count = len(workspaces)
+        active_count = sum(
+            1 for w in workspaces if w.status == WorkspaceStatus.ACTIVE.value
+        )
+        locked_count = sum(
+            1 for w in workspaces if w.status == WorkspaceStatus.LOCKED_OVER_LIMIT.value
+        )
         period_end = None
         if sub and sub.current_period_end:
             period_end = sub.current_period_end.isoformat()
+
+        limit = plan.workspace_limit
+        needs_selection = bool(
+            limit is not None and (locked_count > 0 or active_count > limit)
+        )
 
         return {
             "plan": {
@@ -152,9 +267,84 @@ class BillingService:
             "cancel_at_period_end": bool(sub.cancel_at_period_end) if sub else False,
             "workspace_count": workspace_count,
             "workspace_limit": plan.workspace_limit,
+            "active_workspace_count": active_count,
+            "locked_workspace_count": locked_count,
+            "needs_workspace_selection": needs_selection,
             "razorpay_subscription_id": (
                 sub.razorpay_subscription_id if sub else None
             ),
+        }
+
+    def select_active_workspaces(
+        self,
+        user_id: UUID,
+        workspace_ids: list[UUID],
+    ) -> dict:
+        """
+        FE: user picks which workspaces stay active under the current plan limit.
+        All other owned workspaces become locked_over_limit.
+        """
+        plan, _sub = get_effective_entitlement(self.db, user_id)
+        limit = plan.workspace_limit
+        if limit is None:
+            # Unlimited — just unlock everything.
+            result = sync_workspace_entitlement(self.db, user_id, notify=False)
+            self.db.commit()
+            return {
+                "active_workspace_ids": [str(w.id) for w in _list_user_workspaces(self.db, user_id)],
+                "locked_workspace_ids": [],
+                **result,
+            }
+
+        # Dedupe while preserving order
+        seen: set[UUID] = set()
+        unique_ids: list[UUID] = []
+        for wid in workspace_ids:
+            if wid not in seen:
+                seen.add(wid)
+                unique_ids.append(wid)
+
+        if len(unique_ids) < 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Select at least one workspace to keep active.",
+            )
+        if len(unique_ids) > limit:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"You can keep at most {limit} workspace(s) active on the "
+                    f"{plan.name} plan. Received {len(unique_ids)}."
+                ),
+            )
+
+        owned = _list_user_workspaces(self.db, user_id)
+        owned_by_id = {w.id: w for w in owned}
+        missing = [str(i) for i in unique_ids if i not in owned_by_id]
+        if missing:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Workspace(s) not found or not owned: {', '.join(missing)}",
+            )
+
+        keep_ids = set(unique_ids)
+        for ws in owned:
+            if ws.id in keep_ids:
+                ws.status = WorkspaceStatus.ACTIVE.value
+            else:
+                ws.status = WorkspaceStatus.LOCKED_OVER_LIMIT.value
+            self.db.add(ws)
+
+        self.db.commit()
+
+        return {
+            "active_workspace_ids": [str(i) for i in unique_ids],
+            "locked_workspace_ids": [
+                str(w.id) for w in owned if w.id not in keep_ids
+            ],
+            "active": len(unique_ids),
+            "locked": len(owned) - len(unique_ids),
+            "limit": limit,
         }
 
     def create_checkout(self, user_id: UUID, plan_key: str) -> dict:
@@ -293,6 +483,8 @@ class BillingService:
         if immediate:
             sub.status = "cancelled"
             sub.cancel_at_period_end = False
+            # Period ended / immediate — apply free-plan workspace locks now.
+            sync_workspace_entitlement(self.db, user_id, notify=True)
         else:
             sub.cancel_at_period_end = True
             # status stays active/past_due until webhook confirms at period end
@@ -435,6 +627,7 @@ class BillingService:
             "subscription.pending",
             "subscription.halted",
             "subscription.cancelled",
+            "subscription.completed",
         }:
             logger.info("Ignoring unhandled Razorpay event type=%s", event_type)
             return
@@ -469,11 +662,18 @@ class BillingService:
             sub.cancel_at_period_end = False
             if period_end:
                 sub.current_period_end = period_end
+            self.db.add(sub)
+            self.db.flush()
+            # Paid plan restored — unlock any locked_over_limit workspaces.
+            sync_workspace_entitlement(self.db, sub.user_id, notify=False)
         elif event_type == "subscription.charged":
             if sub.status not in ("cancelled", "expired"):
                 sub.status = "active"
             if period_end:
                 sub.current_period_end = period_end
+            self.db.add(sub)
+            self.db.flush()
+            sync_workspace_entitlement(self.db, sub.user_id, notify=False)
         elif event_type in ("subscription.pending", "subscription.halted"):
             sub.status = "past_due"
             self.db.add(sub)
@@ -484,9 +684,207 @@ class BillingService:
             sub.cancel_at_period_end = False
             if period_end:
                 sub.current_period_end = period_end
+            self.db.add(sub)
+            self.db.flush()
+            # Downgrade to free entitlement → lock excess workspaces.
+            sync_workspace_entitlement(self.db, sub.user_id, notify=True)
+        elif event_type == "subscription.completed":
+            # All billed cycles finished — treat like expiry.
+            sub.status = "expired"
+            sub.cancel_at_period_end = False
+            self.db.add(sub)
+            self.db.flush()
+            sync_workspace_entitlement(self.db, sub.user_id, notify=True)
 
-        self.db.add(sub)
-        self.db.flush()
+    def list_payment_events(
+        self,
+        *,
+        user_id: UUID | None = None,
+        event_types: list[str] | None = None,
+        processed: bool | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        page: int = 1,
+        page_size: int = 25,
+    ) -> dict:
+        """Return paginated payment events with optional filters.
+
+        Filters are ANDed. Pagination uses 1-based `page` and `page_size`.
+        """
+        q = self.db.query(PaymentEvent)
+
+        if user_id is not None:
+            q = q.filter(PaymentEvent.user_id == user_id)
+        if event_types:
+            q = q.filter(PaymentEvent.event_type.in_(event_types))
+        if processed is True:
+            q = q.filter(PaymentEvent.processed_at.isnot(None))
+        elif processed is False:
+            q = q.filter(PaymentEvent.processed_at.is_(None))
+        if date_from is not None:
+            q = q.filter(PaymentEvent.created_at >= date_from)
+        if date_to is not None:
+            q = q.filter(PaymentEvent.created_at <= date_to)
+
+        total = q.count()
+        if page < 1:
+            page = 1
+        if page_size < 1:
+            page_size = 25
+        offset = (page - 1) * page_size
+
+        items = (
+            q.order_by(PaymentEvent.created_at.desc())
+            .offset(offset)
+            .limit(page_size)
+            .all()
+        )
+
+        def serialize(ev: PaymentEvent) -> dict:
+            payload = ev.raw_payload or {}
+
+            def find_dict_with_keys(obj: object, keys: set[str]) -> dict | None:
+                """Recursively find a dict that contains any of the keys in `keys`.
+
+                Returns the first matching dict found, or None.
+                """
+                if isinstance(obj, dict):
+                    if keys.intersection(obj.keys()):
+                        return obj
+                    for v in obj.values():
+                        found = find_dict_with_keys(v, keys)
+                        if found:
+                            return found
+                elif isinstance(obj, list):
+                    for item in obj:
+                        found = find_dict_with_keys(item, keys)
+                        if found:
+                            return found
+                return None
+
+            # potential locations
+            sub_entity = find_dict_with_keys(payload.get("payload", {}), {"subscription"})
+            if isinstance(sub_entity, dict):
+                # subscription entity may be nested under 'subscription'->'entity'
+                sub_entity = sub_entity.get("subscription", {}).get("entity") or sub_entity.get("entity") or sub_entity
+
+            pay_entity = find_dict_with_keys(payload.get("payload", {}), {"payment", "payment_method", "payment_entity", "payment_details"})
+            if isinstance(pay_entity, dict):
+                # normalize to entity dict if present
+                pay_entity = pay_entity.get("payment", {}).get("entity") or pay_entity.get("entity") or pay_entity
+
+            name = None
+            status = None
+            entity = None
+            payment_method = None
+            amount = None
+            currency = None
+
+            if isinstance(sub_entity, dict):
+                entity = {k: v for k, v in sub_entity.items() if k in ("id", "current_end", "end_at", "status", "notes")}
+                notes = sub_entity.get("notes") if isinstance(sub_entity.get("notes"), dict) else {}
+                name = notes.get("plan_key") or notes.get("plan_name")
+                status = sub_entity.get("status")
+
+            # Try many places for payment/card info
+            card_obj = None
+            # common direct payment entity
+            if isinstance(pay_entity, dict):
+                card_obj = pay_entity.get("card") or pay_entity.get("method_details") or pay_entity.get("payment_method") or pay_entity
+
+            # fallback: subscription entity may embed payment info (e.g., last_payment)
+            if not card_obj and isinstance(sub_entity, dict):
+                card_obj = sub_entity.get("last_payment") or sub_entity.get("last_invoice") or sub_entity.get("payment")
+
+            # deep search for any dict that looks like a card (contains keys like last4, issuer, network)
+            if not card_obj:
+                card_obj = find_dict_with_keys(payload, {"last4", "last4_digits", "issuer", "network", "card", "method"})
+
+            if isinstance(card_obj, dict):
+                payment_method = {}
+                # method may be top-level key
+                if card_obj.get("method"):
+                    payment_method["method"] = card_obj.get("method")
+                # card-specific fields
+                last4 = (
+                    card_obj.get("last4")
+                    or card_obj.get("last4_digits")
+                    or card_obj.get("last4digits")
+                    or card_obj.get("last4digit")
+                )
+                if last4:
+                    payment_method["number"] = f"**** **** **** {str(last4)}"
+                elif card_obj.get("number"):
+                    payment_method["number"] = card_obj.get("number")
+                for k in ("type", "issuer", "network"):
+                    if card_obj.get(k):
+                        payment_method[k] = card_obj.get(k)
+
+                # also capture any masked number formats seen in some payloads
+                if not payment_method.get("number"):
+                    masked = card_obj.get("masked") or card_obj.get("masked_card")
+                    if masked:
+                        payment_method["number"] = masked
+
+                # amount/currency may be present on the card/payment object
+                if amount is None:
+                    for ak in ("amount", "amount_paid", "amount_due", "amount_paid_in_paise", "amount_in_paise", "paid_amount"):
+                        if card_obj.get(ak) is not None:
+                            amount = card_obj.get(ak)
+                            break
+                if currency is None:
+                    currency = card_obj.get("currency") or card_obj.get("currency_code")
+
+            # If still missing, search anywhere in payload for amount/currency keys
+            if amount is None or currency is None:
+                found_amt = find_dict_with_keys(payload, {"amount", "amount_paid", "amount_due", "amount_in_paise", "paid_amount", "currency", "currency_code"})
+                if isinstance(found_amt, dict):
+                    if amount is None:
+                        for ak in ("amount", "amount_paid", "amount_due", "amount_paid_in_paise", "amount_in_paise", "paid_amount"):
+                            if found_amt.get(ak) is not None:
+                                amount = found_amt.get(ak)
+                                break
+                    if currency is None:
+                        currency = found_amt.get("currency") or found_amt.get("currency_code")
+
+            # final fallbacks for name/status
+            if not name:
+                try:
+                    notes = (
+                        payload.get("payload", {}).get("subscription", {}).get("entity", {}).get("notes", {})
+                    )
+                    if isinstance(notes, dict):
+                        name = notes.get("plan_key") or notes.get("plan_name")
+                except Exception:
+                    pass
+            if not status:
+                status = ev.event_type
+
+            return {
+                "id": str(ev.id),
+                "user_id": str(ev.user_id) if ev.user_id else None,
+                "razorpay_event_id": ev.razorpay_event_id,
+                "event_type": ev.event_type,
+                "name": name,
+                "status": status,
+                "entity": entity,
+                "payment_method": payment_method,
+                "amount": amount,
+                "currency": currency,
+                "processed_at": (ev.processed_at.isoformat() if ev.processed_at else None),
+                "created_at": (ev.created_at.isoformat() if ev.created_at else None),
+                "raw_payload": None,
+            }
+
+        total_pages = (total + page_size - 1) // page_size if page_size else 1
+
+        return {
+            "items": [serialize(i) for i in items],
+            "total_items": total,
+            "current_page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+        }
 
 
 def _subscription_entity(payload: dict) -> dict | None:
@@ -577,3 +975,53 @@ def _notify_payment_failed(db: Session, user_id: UUID) -> None:
         send_email_notification(email_notification, db=db)
     except Exception:
         logger.exception("Failed to send billing payment-failed notification user=%s", user_id)
+
+
+def _notify_workspaces_locked(
+    db: Session,
+    user_id: UUID,
+    *,
+    newly_locked: int,
+    limit: int,
+) -> None:
+    try:
+        workspace = (
+            db.query(Workspace)
+            .filter(
+                Workspace.owner_id == user_id,
+                Workspace.is_deleted.is_(False),
+            )
+            .order_by(Workspace.created_at.asc())
+            .first()
+        )
+        if not workspace:
+            return
+        extra = {
+            "newly_locked": newly_locked,
+            "workspace_limit": limit,
+            "message": (
+                f"{newly_locked} workspace(s) were locked because your plan allows "
+                f"only {limit} active workspace(s). Choose which to keep active in Billing."
+            ),
+        }
+        create_notification(
+            user_id=user_id,
+            workspace_id=workspace.id,
+            post_id=None,
+            notification_type=NotificationType.BILLING_WORKSPACES_LOCKED,
+            channel=NotificationChannel.IN_APP,
+            db=db,
+            extra_payload=extra,
+        )
+        email_notification = create_notification(
+            user_id=user_id,
+            workspace_id=workspace.id,
+            post_id=None,
+            notification_type=NotificationType.BILLING_WORKSPACES_LOCKED,
+            channel=NotificationChannel.EMAIL,
+            db=db,
+            extra_payload=extra,
+        )
+        send_email_notification(email_notification, db=db)
+    except Exception:
+        logger.exception("Failed to send workspaces-locked notification user=%s", user_id)

@@ -1,15 +1,20 @@
 """Account-level billing routes (Razorpay subscriptions)."""
 
 from uuid import UUID
+from datetime import datetime
+from typing import List
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Request, status, Query
 from sqlalchemy.orm import Session
 
 from app.api.v1.schemas.billing_schema import (
     BillingStatusResponse,
     CancelSubscriptionRequest,
     CheckoutResponse,
+    SelectWorkspacesRequest,
     SubscribeRequest,
+    PaymentEventsPage,
+    PaymentEventItem,
 )
 from app.common.messages import ErrorMessage, ErrorMessages, SuccessMessage
 from app.core.rate_limit import limiter
@@ -111,6 +116,41 @@ async def cancel_subscription(
         )
 
 
+@router.post("/workspaces/select-active", response_model=SuccessMessage)
+@limiter.limit("20/minute")
+async def select_active_workspaces(
+    request: Request,
+    payload: SelectWorkspacesRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_auth),
+):
+    """
+    After downgrade: FE sends the workspace IDs the user wants to keep active
+    (at most plan.workspace_limit). All other owned workspaces become locked_over_limit.
+    """
+    try:
+        service = BillingService(db)
+        data = service.select_active_workspaces(
+            _user_id(current_user),
+            payload.workspace_ids,
+        )
+        return SuccessMessage(
+            message="Active workspaces updated",
+            data=data,
+            code=status.HTTP_200_OK,
+        )
+    except Exception as e:
+        from fastapi import HTTPException
+
+        if isinstance(e, HTTPException):
+            return ErrorMessage(message=e.detail, code=e.status_code)
+        return ErrorMessage(
+            message=ErrorMessages.SERVER_ERROR,
+            code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            details=str(e),
+        )
+
+
 @router.post("/webhooks/razorpay")
 @limiter.limit("120/minute")
 async def razorpay_webhook(
@@ -151,4 +191,51 @@ async def razorpay_webhook(
         return JSONResponse(
             status_code=200,
             content={"status": "ok", "note": "accepted"},
+        )
+
+
+@router.get("/transactions", response_model=PaymentEventsPage)
+@limiter.limit("60/minute")
+async def list_transactions(
+    request: Request,
+    event_type: List[str] | None = Query(None, description="Filter by Razorpay event type. Can be repeated."),
+    processed: bool | None = Query(None, description="Filter by processed state (true/false)."),
+    date_from: str | None = Query(None, description="ISO date/time start (inclusive)"),
+    date_to: str | None = Query(None, description="ISO date/time end (inclusive)"),
+    page: int = Query(1, ge=1, description="Page number (1-based)"),
+    page_size: int = Query(25, ge=1, le=200, description="Items per page"),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_auth),
+):
+    """List the authenticated user's payment events (webhook audit rows)."""
+    try:
+        svc = BillingService(db)
+
+        dt_from = None
+        dt_to = None
+        if date_from:
+            dt_from = datetime.fromisoformat(date_from)
+        if date_to:
+            dt_to = datetime.fromisoformat(date_to)
+
+        data = svc.list_payment_events(
+            user_id=_user_id(current_user),
+            event_types=event_type,
+            processed=processed,
+            date_from=dt_from,
+            date_to=dt_to,
+            page=page,
+            page_size=page_size,
+        )
+
+        return PaymentEventsPage.model_validate(data)
+    except Exception as e:
+        from fastapi import HTTPException
+
+        if isinstance(e, HTTPException):
+            return ErrorMessage(message=e.detail, code=e.status_code)
+        return ErrorMessage(
+            message=ErrorMessages.SERVER_ERROR,
+            code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            details=str(e),
         )

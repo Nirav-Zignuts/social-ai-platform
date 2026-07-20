@@ -8,10 +8,11 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from app.core.enums import GeneratedPostStatus, PublishingJobStatus
+from app.core.enums import GeneratedPostStatus, PublishingJobStatus, WorkspaceStatus
 from app.db.session import SessionLocal
 from app.models.generated_post import GeneratedPost
 from app.models.publishing_job import PublishingJob
+from app.models.workspace import Workspace
 from app.services.post_insight_service import PostInsightService
 
 logger = logging.getLogger(__name__)
@@ -30,12 +31,15 @@ async def _sync_insights_async() -> dict:
         post_ids = (
             db.query(GeneratedPost.id)
             .join(PublishingJob, PublishingJob.post_id == GeneratedPost.id)
+            .join(Workspace, Workspace.id == GeneratedPost.workspace_id)
             .filter(
                 GeneratedPost.status == GeneratedPostStatus.PUBLISHED,
                 GeneratedPost.is_deleted.is_(False),
                 PublishingJob.status == PublishingJobStatus.PUBLISHED,
                 PublishingJob.published_at.is_not(None),
                 PublishingJob.published_at >= cutoff,
+                Workspace.status == WorkspaceStatus.ACTIVE.value,
+                Workspace.is_deleted.is_(False),
             )
             .group_by(GeneratedPost.id)
             .all()

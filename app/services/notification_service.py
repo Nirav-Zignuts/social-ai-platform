@@ -34,6 +34,10 @@ NOTIFICATION_MESSAGES = {
         "We could not process your subscription payment. "
         "Please update your payment method to avoid losing access."
     ),
+    NotificationType.BILLING_WORKSPACES_LOCKED: (
+        "Some workspaces were locked after your plan changed. "
+        "Choose which ones to keep active in Billing settings."
+    ),
 }
 
 EMAIL_SUBJECTS = {
@@ -45,6 +49,7 @@ EMAIL_SUBJECTS = {
     NotificationType.POST_PUBLISH_FAILED: "A scheduled post failed to publish",
     NotificationType.POST_PUBLISH_SUCCEEDED: "Your post was published",
     NotificationType.BILLING_PAYMENT_FAILED: "Subscription payment failed",
+    NotificationType.BILLING_WORKSPACES_LOCKED: "Workspaces locked after plan change",
 }
 
 
@@ -79,6 +84,8 @@ def _build_payload(
     if notification_type == NotificationType.INSTAGRAM_TOKEN_EXPIRED:
         payload["settings_link"] = build_instagram_settings_link(workspace_id)
     elif notification_type == NotificationType.BILLING_PAYMENT_FAILED:
+        payload["billing_link"] = build_billing_settings_link()
+    elif notification_type == NotificationType.BILLING_WORKSPACES_LOCKED:
         payload["billing_link"] = build_billing_settings_link()
     elif post_id is not None:
         payload["review_link"] = build_review_link(workspace_id, post_id)

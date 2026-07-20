@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from app.models.workspace import Workspace
+from app.core.enums import WorkspaceStatus
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +91,7 @@ def find_generation_due_workspaces(
     workspaces = (
         db.query(Workspace)
         .filter(
-            Workspace.status == "active",
+            Workspace.status == WorkspaceStatus.ACTIVE.value,
             Workspace.onboarding_status == "completed",
             Workspace.preferred_post_time.is_not(None),
             Workspace.is_deleted.is_(False),

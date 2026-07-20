@@ -13,6 +13,7 @@ from app.api.v1.schemas.workspace_schema import (
 )
 from app.common.messages import WorkspaceMessages, ErrorMessages
 from app.common.responses import SuccessResponse
+from app.core.enums import WorkspaceStatus
 from app.models.ai_configuration import AIConfiguration
 from app.models.business_profile import BusinessProfile
 from app.models.knowledge_document import KnowledgeDocument
@@ -73,6 +74,21 @@ class WorkspaceService:
         if workspace.owner_id != user_id:
             raise HTTPException(status_code=403, detail=ErrorMessages.FORBIDDEN)
         return workspace
+
+    def _assert_workspace_active_for_automation(self, workspace: Workspace) -> None:
+        if workspace.status == WorkspaceStatus.LOCKED_OVER_LIMIT.value:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "This workspace is locked because it exceeds your plan limit. "
+                    "Choose it as an active workspace in Billing, or upgrade your plan."
+                ),
+            )
+        if workspace.status != WorkspaceStatus.ACTIVE.value:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Workspace is not active (status={workspace.status}).",
+            )
 
     def create_workspace(self, payload: WorkspaceCreate, user_id: UUID) -> dict:
         from app.services.billing_service import assert_can_create_workspace
@@ -257,6 +273,7 @@ class WorkspaceService:
 
     def trigger_generation_cycle(self, workspace_id: UUID, user_id: UUID) -> dict:
         workspace = self._get_workspace_or_404(workspace_id, user_id)
+        self._assert_workspace_active_for_automation(workspace)
 
         from zoneinfo import ZoneInfo
         from datetime import datetime, timezone
@@ -365,7 +382,7 @@ class WorkspaceService:
             ):
                 self._soft_flag(row)
 
-        workspace.status = "deleted"
+        workspace.status = WorkspaceStatus.DELETED.value
         workspace.slug = f"{workspace.slug}-deleted-{workspace.id}"
 
         self._soft_flag(workspace)

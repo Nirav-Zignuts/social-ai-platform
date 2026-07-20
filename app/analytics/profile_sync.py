@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
-from app.core.enums import ConnectedAccountStatus, SocialProvider
+from app.core.enums import ConnectedAccountStatus, SocialProvider, WorkspaceStatus
 from app.db.session import SessionLocal
 from app.generation.scheduler import get_workspace_local_now
 from app.integrations.meta.exceptions import InstagramTokenExpiredError, MetaIntegrationError
@@ -103,7 +103,7 @@ async def _sync_profile_metrics_async(workspace_id: str) -> dict:
             .filter(
                 Workspace.id == wid,
                 Workspace.is_deleted.is_(False),
-                Workspace.status == "active",
+                Workspace.status == WorkspaceStatus.ACTIVE.value,
             )
             .first()
         )
@@ -184,7 +184,7 @@ def poll_profile_sync() -> dict:
             db.query(Workspace.id)
             .join(ConnectedAccount, ConnectedAccount.workspace_id == Workspace.id)
             .filter(
-                Workspace.status == "active",
+                Workspace.status == WorkspaceStatus.ACTIVE.value,
                 Workspace.is_deleted.is_(False),
                 ConnectedAccount.provider == SocialProvider.INSTAGRAM.value,
                 ConnectedAccount.status == ConnectedAccountStatus.CONNECTED.value,

@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 from app.common.messages import ErrorMessages
-from app.core.enums import GeneratedPostStatus
+from app.core.enums import GeneratedPostStatus, WorkspaceStatus
 from app.integrations.meta.exceptions import InstagramTokenExpiredError, MetaAPIError
 from app.integrations.meta.service import MetaService
 from app.models.generated_post import GeneratedPost
@@ -176,7 +176,20 @@ class GeneratedPostService:
         }
 
     def enqueue_publish_now(self, workspace_id: UUID, post_id: UUID, user_id: UUID) -> dict:
-        self._get_workspace_or_403(workspace_id, user_id)
+        workspace = self._get_workspace_or_403(workspace_id, user_id)
+        if workspace.status == WorkspaceStatus.LOCKED_OVER_LIMIT.value:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "This workspace is locked because it exceeds your plan limit. "
+                    "Choose it as an active workspace in Billing, or upgrade your plan."
+                ),
+            )
+        if workspace.status != WorkspaceStatus.ACTIVE.value:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Workspace is not active (status={workspace.status}).",
+            )
 
         post = self._get_active_post(workspace_id, post_id)
 

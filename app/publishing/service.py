@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.enums import GeneratedPostStatus, PublishingJobStatus, SocialProvider
+from app.core.enums import GeneratedPostStatus, PublishingJobStatus, SocialProvider, WorkspaceStatus
 from app.integrations.meta.exceptions import (
     InstagramContainerTimeoutError,
     InstagramPublishError,
@@ -17,6 +17,7 @@ from app.integrations.meta.exceptions import (
 from app.integrations.meta.service import MetaService
 from app.models.generated_post import GeneratedPost
 from app.models.publishing_job import PublishingJob
+from app.models.workspace import Workspace
 from app.publishing.token import get_valid_token
 
 logger = logging.getLogger(__name__)
@@ -268,11 +269,17 @@ def find_due_post_ids(db: Session, *, now: datetime | None = None) -> list[UUID]
         .scalar_subquery()
     )
 
-    stmt = select(GeneratedPost.id).where(
-        GeneratedPost.status == GeneratedPostStatus.APPROVED,
-        GeneratedPost.is_deleted.is_(False),
-        GeneratedPost.scheduled_for.is_not(None),
-        GeneratedPost.scheduled_for <= now,
-        GeneratedPost.id.not_in(active_jobs),
+    stmt = (
+        select(GeneratedPost.id)
+        .join(Workspace, Workspace.id == GeneratedPost.workspace_id)
+        .where(
+            GeneratedPost.status == GeneratedPostStatus.APPROVED,
+            GeneratedPost.is_deleted.is_(False),
+            GeneratedPost.scheduled_for.is_not(None),
+            GeneratedPost.scheduled_for <= now,
+            GeneratedPost.id.not_in(active_jobs),
+            Workspace.is_deleted.is_(False),
+            Workspace.status == WorkspaceStatus.ACTIVE.value,
+        )
     )
     return list(db.execute(stmt).scalars().all())
