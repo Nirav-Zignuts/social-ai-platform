@@ -44,6 +44,8 @@ async def create_workspace(
             data={"workspace": WorkspaceResponse.model_validate(workspace).model_dump(mode="json")},
             code=status.HTTP_201_CREATED,
         )
+    except HTTPException as e:
+        return ErrorMessage(message=e.detail, code=e.status_code)
     except Exception as e:
         import traceback
         traceback.print_exc()

@@ -137,6 +137,11 @@ class Settings(BaseSettings):
     COHERE_API_KEY: str = os.getenv("COHERE_API_KEY", "")
     CHROMA_PERSIST_DIR: str = os.getenv("CHROMA_PERSIST_DIR", "storage/chroma")
 
+    # Razorpay (use rzp_test_* until KYC; swap to rzp_live_* with zero code changes)
+    RAZORPAY_KEY_ID: str = os.getenv("RAZORPAY_KEY_ID", "")
+    RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "")
+    RAZORPAY_WEBHOOK_SECRET: str = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",

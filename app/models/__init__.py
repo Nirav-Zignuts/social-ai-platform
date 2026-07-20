@@ -22,3 +22,4 @@ from app.models.profile_metric_snapshot import ProfileMetricSnapshot
 from app.models.post_insight_snapshot import PostInsightSnapshot
 from app.models.onboarding_chat_session import OnboardingChatSession
 from app.models.onboarding_chat_message import OnboardingChatMessage
+from app.models.subscription import PaymentEvent, Subscription, SubscriptionPlan

@@ -45,6 +45,7 @@ class NotificationType(str, Enum):
     INSTAGRAM_TOKEN_EXPIRED = "instagram_token_expired"
     POST_PUBLISH_FAILED = "post_publish_failed"
     POST_PUBLISH_SUCCEEDED = "post_publish_succeeded"
+    BILLING_PAYMENT_FAILED = "billing_payment_failed"
 
 
 class NotificationChannel(str, Enum):

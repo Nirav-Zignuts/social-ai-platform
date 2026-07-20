@@ -16,6 +16,7 @@ from app.api.v1.routes import (
     internal_cron_routes,
     onboarding_chat_routes,
     analytics_routes,
+    billing_routes,
 )
 from app.core.exception_handlers import (
     request_validation_exception_handler,
@@ -73,6 +74,10 @@ app.include_router(
 )
 app.include_router(
     analytics_routes.router,
+    prefix=settings.API_PREFIX,
+)
+app.include_router(
+    billing_routes.router,
     prefix=settings.API_PREFIX,
 )
 app.add_middleware(

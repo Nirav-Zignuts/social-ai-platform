@@ -30,6 +30,10 @@ NOTIFICATION_MESSAGES = {
         "A scheduled post failed to publish after multiple attempts."
     ),
     NotificationType.POST_PUBLISH_SUCCEEDED: "Your scheduled post was published to Instagram.",
+    NotificationType.BILLING_PAYMENT_FAILED: (
+        "We could not process your subscription payment. "
+        "Please update your payment method to avoid losing access."
+    ),
 }
 
 EMAIL_SUBJECTS = {
@@ -40,6 +44,7 @@ EMAIL_SUBJECTS = {
     NotificationType.INSTAGRAM_TOKEN_EXPIRED: "Reconnect Instagram to resume publishing",
     NotificationType.POST_PUBLISH_FAILED: "A scheduled post failed to publish",
     NotificationType.POST_PUBLISH_SUCCEEDED: "Your post was published",
+    NotificationType.BILLING_PAYMENT_FAILED: "Subscription payment failed",
 }
 
 
@@ -51,6 +56,11 @@ def build_review_link(workspace_id: UUID, post_id: UUID) -> str:
 def build_instagram_settings_link(workspace_id: UUID) -> str:
     base = settings.FRONTEND_URL.rstrip("/")
     return f"{base}/workspaces/{workspace_id}/settings"
+
+
+def build_billing_settings_link() -> str:
+    base = settings.FRONTEND_URL.rstrip("/")
+    return f"{base}/settings/billing"
 
 
 def _build_payload(
@@ -68,6 +78,8 @@ def _build_payload(
         payload["workspace_name"] = workspace_name
     if notification_type == NotificationType.INSTAGRAM_TOKEN_EXPIRED:
         payload["settings_link"] = build_instagram_settings_link(workspace_id)
+    elif notification_type == NotificationType.BILLING_PAYMENT_FAILED:
+        payload["billing_link"] = build_billing_settings_link()
     elif post_id is not None:
         payload["review_link"] = build_review_link(workspace_id, post_id)
     if extra:
@@ -138,7 +150,11 @@ def send_email_notification(notification: Notification, db: Session | None = Non
                 payload["workspace_name"] = workspace.name
 
         message = payload.get("message", "You have a new notification.")
-        review_link = payload.get("review_link") or payload.get("settings_link")
+        review_link = (
+            payload.get("review_link")
+            or payload.get("settings_link")
+            or payload.get("billing_link")
+        )
 
         try:
             notification_type = NotificationType(notification.type)

@@ -75,6 +75,10 @@ class WorkspaceService:
         return workspace
 
     def create_workspace(self, payload: WorkspaceCreate, user_id: UUID) -> dict:
+        from app.services.billing_service import assert_can_create_workspace
+
+        assert_can_create_workspace(self.db, user_id)
+
         slug = self._generate_unique_slug(payload.name)
         workspace = Workspace(
             owner_id=user_id,
