@@ -8,7 +8,10 @@ from app.core.enums import GeneratedPostStatus, PostReviewAction, WorkspaceStatu
 from app.models.generated_post import GeneratedPost
 from app.models.post_review import PostReview
 from app.models.workspace import Workspace
-from app.services.generation.resume import resume_generation_for_regenerate
+from app.services.generation.resume import (
+    RegenerationCheckpointError,
+    resume_generation_for_regenerate,
+)
 from app.services.notification_service import notify_post_approved
 from app.services.scheduling import calculate_next_scheduled_time
 
@@ -121,6 +124,7 @@ class PostReviewService:
         post_id: UUID,
         user_id: UUID,
         feedback: str,
+        regenerate_image: bool = False,
     ) -> GeneratedPost:
         workspace = self._get_workspace_or_403(workspace_id, user_id)
         self._assert_workspace_active(workspace)
@@ -135,12 +139,27 @@ class PostReviewService:
                 ),
             )
 
-        self._insert_review(post, user_id, PostReviewAction.REGENERATE, feedback=feedback)
-        self.db.commit()
-
-        await resume_generation_for_regenerate(str(post.generation_cycle_id), feedback)
+        try:
+            await resume_generation_for_regenerate(
+                str(post.generation_cycle_id),
+                feedback,
+                regenerate_image=regenerate_image,
+                expected_workspace_id=str(workspace.id),
+                expected_post_id=str(post.id),
+            )
+        except RegenerationCheckpointError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "This post cannot be regenerated because its generation "
+                    "checkpoint is missing or does not match the post."
+                ),
+            ) from exc
 
         self.db.expire(post)
+        self.db.refresh(post)
+        self._insert_review(post, user_id, PostReviewAction.REGENERATE, feedback=feedback)
+        self.db.commit()
         self.db.refresh(post)
         return post
 

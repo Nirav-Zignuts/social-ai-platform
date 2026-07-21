@@ -15,7 +15,9 @@ IMAGE_VISUAL_GUARDRAILS = (
     "Pure visual storytelling only: pristine unmarked surfaces, "
     "blank packaging without labels, environment free of signage. "
     "Unlettered scene — no typography, logos, watermarks, banners, "
-    "captions, subtitles, posters, stickers, UI, or readable writing of any kind."
+    "captions, subtitles, posters, stickers, UI, or readable writing of any kind. "
+    "HUMAN ANATOMY QUALITY: if any person is visible, render a coherent, "
+    "anatomically correct real human body."
 )
 
 LEGACY_FREE_BASE = "https://image.pollinations.ai/prompt"

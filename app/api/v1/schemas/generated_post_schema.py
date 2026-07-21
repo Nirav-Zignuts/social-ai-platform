@@ -68,6 +68,7 @@ class RejectReviewRequest(BaseModel):
 
 class RegenerateReviewRequest(BaseModel):
     feedback: str = Field(..., min_length=1)
+    regenerate_image: bool = False
 
 
 class EditReviewRequest(BaseModel):

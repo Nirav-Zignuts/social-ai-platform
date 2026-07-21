@@ -159,10 +159,14 @@ async def regenerate_post(
     try:
         service = PostReviewService(db)
         post = await service.regenerate(
-            workspace_id, post_id, _user_id(current_user), feedback=payload.feedback
+            workspace_id,
+            post_id,
+            _user_id(current_user),
+            feedback=payload.feedback,
+            regenerate_image=payload.regenerate_image,
         )
         return SuccessMessage(
-            message="Post regeneration started",
+            message="Post regenerated successfully",
             data={"post": GeneratedPostResponse.model_validate(post).model_dump(mode="json")},
             code=http_status.HTTP_200_OK,
         )

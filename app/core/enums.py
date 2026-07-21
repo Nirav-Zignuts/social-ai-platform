@@ -39,6 +39,7 @@ class PublishingJobStatus(str, Enum):
 
 class NotificationType(str, Enum):
     POST_READY_FOR_REVIEW = "post_ready_for_review"
+    POST_REGENERATED = "post_regenerated"
     POST_APPROVED = "post_approved"
     POST_REJECTED = "post_rejected"
     POST_AUTO_APPROVED = "post_auto_approved"

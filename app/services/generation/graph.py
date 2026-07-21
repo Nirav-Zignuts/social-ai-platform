@@ -9,8 +9,15 @@ from app.services.generation.nodes import (
     persist_post_node
 )
 
+MAX_TOTAL_REGENERATIONS = 5
+
+
 def should_generate_image(state: GenerationState):
-    decision = "generate_image" if state.get("needs_image") else "skip_image"
+    decision = (
+        "generate_image"
+        if state.get("needs_image") or state.get("force_regenerate_image")
+        else "skip_image"
+    )
     return decision
 
 def reviewer_router(state: GenerationState):
@@ -18,13 +25,28 @@ def reviewer_router(state: GenerationState):
         decision = "persist"
     else:
         retry_count = state.get("reviewer_retry_count", 0)
-        decision = "retry_writer" if retry_count < 2 else "persist"
+        total_count = state.get(
+            "total_regenerate_count",
+            retry_count,
+        )
+        decision = (
+            "retry_writer"
+            if retry_count < 2 and total_count < MAX_TOTAL_REGENERATIONS
+            else "persist"
+        )
 
     return decision
 
 def increment_retry(state: GenerationState):
     new_count = state.get("reviewer_retry_count", 0) + 1
-    return {"reviewer_retry_count": new_count}
+    total_count = state.get(
+        "total_regenerate_count",
+        state.get("reviewer_retry_count", 0),
+    )
+    return {
+        "reviewer_retry_count": new_count,
+        "total_regenerate_count": total_count + 1,
+    }
 
 def build_generation_graph():
     builder = StateGraph(GenerationState)

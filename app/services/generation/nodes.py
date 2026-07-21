@@ -16,6 +16,7 @@ from app.services.scheduling import calculate_next_scheduled_time
 from app.services.notification_service import (
     notify_post_ready_for_review,
     notify_post_auto_approved,
+    notify_post_regenerated,
 )
 
 # ----------------- Schemas -----------------
@@ -267,12 +268,14 @@ def writer_node(state: GenerationState) -> GenerationState:
 
 
 def image_node(state: GenerationState) -> GenerationState:
-    # Only called if needs_image == True, but we can double check
-    if not state.get("needs_image"):
+    force_regenerate = bool(state.get("force_regenerate_image"))
+    if not state.get("needs_image") and not force_regenerate:
         return state
 
-    # Skip if we already generated one in a previous pass
-    if state.get("image_url"):
+    # Normal writer/reviewer retries reuse an existing image. An explicit human
+    # request bypasses this guard and attempts a replacement.
+    previous_image_url = state.get("image_url")
+    if previous_image_url and not force_regenerate:
         return state
 
     ai_c = state.get("ai_config") or {}
@@ -318,12 +321,19 @@ STRICT OUTPUT RULES for visual_prompt:
 
     prompt = assemble_image_prompt(visual_scene, caption=caption)
 
-    image_url = generate_image(prompt, state["workspace_id"], state["generation_cycle_id"])
+    generated_image_url = generate_image(
+        prompt,
+        state["workspace_id"],
+        state["generation_cycle_id"],
+    )
 
 
     return {
         **state,
-        "image_url": image_url
+        # A failed replacement must not discard the previously valid image.
+        "image_url": generated_image_url or previous_image_url,
+        # Force applies to one image-node execution only.
+        "force_regenerate_image": False,
     }
 
 
@@ -434,7 +444,10 @@ def persist_post_node(state: GenerationState) -> GenerationState:
                 status=post_status,
                 reviewer_notes=state.get("reviewer_notes"),
                 reviewer_score=state.get("reviewer_score"),
-                regenerate_count=state.get("reviewer_retry_count", 0),
+                regenerate_count=state.get(
+                    "total_regenerate_count",
+                    state.get("reviewer_retry_count", 0),
+                ),
                 scheduled_for=scheduled_for,
             )
             db.add(post)
@@ -447,15 +460,20 @@ def persist_post_node(state: GenerationState) -> GenerationState:
             post.status = post_status
             post.reviewer_notes = state.get("reviewer_notes")
             post.reviewer_score = state.get("reviewer_score")
-            post.regenerate_count = state.get("reviewer_retry_count", 0)
-            if scheduled_for is not None:
-                post.scheduled_for = scheduled_for
+            post.regenerate_count = state.get(
+                "total_regenerate_count",
+                state.get("reviewer_retry_count", 0),
+            )
+            post.scheduled_for = scheduled_for
 
         db.commit()
         db.refresh(post)
         post_id = str(post.id)
 
-    if require_human_approval:
+    if state.get("is_human_regeneration"):
+        notify_post_regenerated(post_id)
+        notify_kind = "regenerated"
+    elif require_human_approval:
         notify_post_ready_for_review(post_id)
         notify_kind = "ready_for_review"
     else:

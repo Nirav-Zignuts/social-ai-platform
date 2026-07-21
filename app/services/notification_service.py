@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 NOTIFICATION_MESSAGES = {
     NotificationType.POST_READY_FOR_REVIEW: "A new post is ready for your review.",
+    NotificationType.POST_REGENERATED: (
+        "Your post was regenerated successfully and is ready for review."
+    ),
     NotificationType.POST_APPROVED: "Your post has been approved and scheduled.",
     NotificationType.POST_REJECTED: "Your post has been rejected.",
     NotificationType.POST_AUTO_APPROVED: (
@@ -42,6 +45,7 @@ NOTIFICATION_MESSAGES = {
 
 EMAIL_SUBJECTS = {
     NotificationType.POST_READY_FOR_REVIEW: "A new post is ready for your review",
+    NotificationType.POST_REGENERATED: "Your regenerated post is ready for review",
     NotificationType.POST_APPROVED: "Your post has been approved",
     NotificationType.POST_REJECTED: "Your post has been rejected",
     NotificationType.POST_AUTO_APPROVED: "A new post was auto-approved and scheduled",
@@ -206,7 +210,7 @@ def notify_post_ready_for_review(post_id: str) -> None:
         if not workspace:
             return
 
-        create_notification(
+        notification = create_notification(
             user_id=workspace.owner_id,
             workspace_id=workspace.id,
             post_id=post.id,
@@ -214,16 +218,29 @@ def notify_post_ready_for_review(post_id: str) -> None:
             channel=NotificationChannel.IN_APP,
             db=db,
         )
+        # One notification represents the user-facing event. Reuse it for email
+        # delivery instead of storing a second, visually duplicate EMAIL row.
+        send_email_notification(notification, db=db)
 
-        email_notification = create_notification(
+
+def notify_post_regenerated(post_id: str) -> None:
+    with SessionLocal() as db:
+        post = db.query(GeneratedPost).filter(GeneratedPost.id == post_id).first()
+        if not post:
+            return
+
+        workspace = db.query(Workspace).filter(Workspace.id == post.workspace_id).first()
+        if not workspace:
+            return
+
+        create_notification(
             user_id=workspace.owner_id,
             workspace_id=workspace.id,
             post_id=post.id,
-            notification_type=NotificationType.POST_READY_FOR_REVIEW,
-            channel=NotificationChannel.EMAIL,
+            notification_type=NotificationType.POST_REGENERATED,
+            channel=NotificationChannel.IN_APP,
             db=db,
         )
-        send_email_notification(email_notification, db=db)
 
 
 def notify_post_auto_approved(post_id: str) -> None:

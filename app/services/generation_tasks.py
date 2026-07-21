@@ -43,10 +43,13 @@ async def _run_graph_async(workspace_id: str, generation_cycle_id: str):
             "cta": None,
             "needs_image": None,
             "image_url": None,
+            "force_regenerate_image": False,
+            "is_human_regeneration": False,
             "reviewer_passed": None,
             "reviewer_score": None,
             "reviewer_notes": None,
             "reviewer_retry_count": 0,
+            "total_regenerate_count": 0,
             "post_id": None,
         }
 

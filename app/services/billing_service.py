@@ -252,7 +252,7 @@ class BillingService:
 
         limit = plan.workspace_limit
         needs_selection = bool(
-            limit is not None and (locked_count > 0 or active_count > limit)
+            limit is not None and  active_count > limit
         )
 
         return {

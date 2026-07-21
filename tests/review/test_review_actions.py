@@ -32,7 +32,7 @@ def post(db, workspace, user):
     return p
 
 
-def test_notify_post_ready_for_review_creates_both_channels(db, workspace, post, user):
+def test_notify_post_ready_for_review_creates_one_notification(db, workspace, post, user):
     with patch("app.services.notification_service.EmailService") as mock_email_cls:
         mock_email_cls.return_value.send_post_notification_email.return_value = None
         notify_post_ready_for_review(str(post.id))
@@ -43,9 +43,8 @@ def test_notify_post_ready_for_review_creates_both_channels(db, workspace, post,
         .order_by(Notification.channel)
         .all()
     )
-    assert len(notifications) == 2
-    channels = {n.channel for n in notifications}
-    assert channels == {NotificationChannel.IN_APP.value, NotificationChannel.EMAIL.value}
+    assert len(notifications) == 1
+    assert notifications[0].channel == NotificationChannel.IN_APP.value
 
     for n in notifications:
         assert n.type == NotificationType.POST_READY_FOR_REVIEW.value
@@ -55,8 +54,7 @@ def test_notify_post_ready_for_review_creates_both_channels(db, workspace, post,
         assert n.payload["review_link"] == expected_link
         assert "message" in n.payload
 
-    email = next(n for n in notifications if n.channel == NotificationChannel.EMAIL.value)
-    assert email.sent_at is not None
+    assert notifications[0].sent_at is not None
 
     mock_email_cls.return_value.send_post_notification_email.assert_called_once()
     call_kwargs = mock_email_cls.return_value.send_post_notification_email.call_args.kwargs
@@ -128,7 +126,11 @@ def test_regenerate_calls_graph_resume(mock_resume, db, workspace, user, post):
     )
 
     mock_resume.assert_awaited_once_with(
-        str(post.generation_cycle_id), "Make it shorter"
+        str(post.generation_cycle_id),
+        "Make it shorter",
+        regenerate_image=False,
+        expected_workspace_id=str(workspace.id),
+        expected_post_id=str(post.id),
     )
     assert result.id == post.id
 

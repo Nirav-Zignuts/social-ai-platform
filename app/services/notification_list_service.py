@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.common.messages import ErrorMessages
+from app.core.enums import NotificationChannel
 from app.models.notification import Notification
 from app.models.workspace import Workspace
 
@@ -35,6 +36,7 @@ class NotificationListService:
             .filter(
                 Notification.workspace_id == workspace_id,
                 Notification.user_id == user_id,
+                Notification.channel == NotificationChannel.IN_APP.value,
             )
             .order_by(Notification.created_at.desc())
         )
@@ -58,6 +60,7 @@ class NotificationListService:
                 Notification.id == notification_id,
                 Notification.workspace_id == workspace_id,
                 Notification.user_id == user_id,
+                Notification.channel == NotificationChannel.IN_APP.value,
             )
             .first()
         )
