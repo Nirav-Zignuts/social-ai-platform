@@ -11,6 +11,7 @@ from app.knowledge.retrieval import retrieve_context
 from app.core.enums import GeneratedPostStatus
 from app.core.llm_client import get_chat_model
 from app.core.image_client import assemble_image_prompt, generate_image
+from app.analytics.ai_usage_logger import invoke_structured_with_usage
 from app.services.generation.state import GenerationState
 from app.services.scheduling import calculate_next_scheduled_time
 from app.services.notification_service import (
@@ -177,10 +178,16 @@ def strategy_node(state: GenerationState) -> GenerationState:
 
 
     model = get_chat_model("strategist")
-    structured_llm = model.with_structured_output(StrategyOutput)
 
     try:
-        result = structured_llm.invoke(prompt)
+        result = invoke_structured_with_usage(
+            model=model,
+            schema=StrategyOutput,
+            prompt=prompt,
+            workspace_id=state["workspace_id"],
+            generated_post_id=state.get("post_id"),
+            agent_purpose="strategist",
+        )
         content_type = result.content_type
         rationale = result.rationale
 
@@ -242,10 +249,16 @@ def writer_node(state: GenerationState) -> GenerationState:
 
 
     model = get_chat_model("writer")
-    structured_llm = model.with_structured_output(WriterOutput)
 
     try:
-        result = structured_llm.invoke(prompt)
+        result = invoke_structured_with_usage(
+            model=model,
+            schema=WriterOutput,
+            prompt=prompt,
+            workspace_id=state["workspace_id"],
+            generated_post_id=state.get("post_id"),
+            agent_purpose="writer",
+        )
         caption = result.caption
         hashtags = result.hashtags
         cta = result.cta
@@ -309,8 +322,14 @@ STRICT OUTPUT RULES for visual_prompt:
     visual_scene = ""
     try:
         model = get_chat_model("writer")
-        structured_llm = model.with_structured_output(ImagePromptOutput)
-        result = structured_llm.invoke(visual_brief)
+        result = invoke_structured_with_usage(
+            model=model,
+            schema=ImagePromptOutput,
+            prompt=visual_brief,
+            workspace_id=state["workspace_id"],
+            generated_post_id=state.get("post_id"),
+            agent_purpose="image_prompt",
+        )
         visual_scene = (result.visual_prompt or "").strip()
     except Exception as e:
         visual_scene = (
@@ -366,10 +385,16 @@ since these notes are used to guide a rewrite if this post doesn't pass.
 """
 
     model = get_chat_model("reviewer")
-    structured_llm = model.with_structured_output(ReviewerOutput)
 
     try:
-        result = structured_llm.invoke(prompt)
+        result = invoke_structured_with_usage(
+            model=model,
+            schema=ReviewerOutput,
+            prompt=prompt,
+            workspace_id=state["workspace_id"],
+            generated_post_id=state.get("post_id"),
+            agent_purpose="reviewer",
+        )
         score = result.score
         notes = result.notes
     except Exception as e:

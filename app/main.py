@@ -17,6 +17,10 @@ from app.api.v1.routes import (
     onboarding_chat_routes,
     analytics_routes,
     billing_routes,
+    admin_auth_routes,
+    admin_routes,
+    public_contact_routes,
+    support_routes,
 )
 from app.core.exception_handlers import (
     request_validation_exception_handler,
@@ -80,6 +84,42 @@ app.include_router(
     billing_routes.router,
     prefix=settings.API_PREFIX,
 )
+app.include_router(public_contact_routes.router)
+app.include_router(
+    support_routes.router,
+    prefix=settings.API_PREFIX,
+)
+
+_admin_config = (
+    settings.ADMIN_ROUTE_PREFIX,
+    settings.ADMIN_JWE_SECRET,
+    settings.ADMIN_OTP_PEPPER,
+)
+if any(_admin_config) and not all(_admin_config):
+    raise RuntimeError(
+        "ADMIN_ROUTE_PREFIX, ADMIN_JWE_SECRET and ADMIN_OTP_PEPPER must all be set"
+    )
+if all(_admin_config):
+    if (
+        not settings.ADMIN_ROUTE_PREFIX.startswith("/")
+        or settings.ADMIN_ROUTE_PREFIX.count("/") != 1
+        or len(settings.ADMIN_ROUTE_PREFIX) < 20
+        or "admin" in settings.ADMIN_ROUTE_PREFIX.lower()
+    ):
+        raise RuntimeError(
+            "ADMIN_ROUTE_PREFIX must be one long, non-admin, random path segment"
+        )
+    # Deliberately exclude hidden operations paths from the public OpenAPI schema.
+    app.include_router(
+        admin_auth_routes.router,
+        prefix=settings.ADMIN_ROUTE_PREFIX,
+        include_in_schema=False,
+    )
+    app.include_router(
+        admin_routes.router,
+        prefix=settings.ADMIN_ROUTE_PREFIX,
+        include_in_schema=False,
+    )
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[

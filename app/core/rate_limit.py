@@ -13,10 +13,11 @@ from app.core.config import settings
 
 
 def _rate_limit_key(request: Request) -> str:
-    """Rate-limit by client IP (honors X-Forwarded-For when behind a proxy)."""
+    """Rate-limit by IP; trust forwarding headers only when explicitly enabled."""
     forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        # First hop is the original client when trusted proxy sets this header.
+    if settings.TRUST_PROXY_HEADERS and forwarded:
+        # Enable only when the deployment proxy overwrites, rather than appends
+        # to, client-supplied X-Forwarded-For.
         return forwarded.split(",")[0].strip()
     return get_remote_address(request)
 

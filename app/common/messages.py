@@ -114,3 +114,49 @@ class WorkspaceMessages:
     DOCUMENT_DELETED = "Document deleted successfully"
     POST_DELETED = "Generated post deleted successfully"
     INSTAGRAM_DISCONNECTED = "Instagram disconnected successfully"
+
+
+class AdminMessages:
+    OTP_REQUESTED = "If this email is registered as an admin, a code has been sent."
+    OTP_VERIFIED = "Admin authentication successful"
+    ENQUIRIES_RETRIEVED = "Contact enquiries retrieved successfully"
+    ENQUIRY_RETRIEVED = "Contact enquiry retrieved successfully"
+    ENQUIRY_UPDATED = "Contact enquiry updated successfully"
+    ENQUIRY_DELETED = "Contact enquiry deleted successfully"
+    AI_USAGE_RETRIEVED = "AI usage logs retrieved successfully"
+    AI_USAGE_SUMMARY_RETRIEVED = "AI usage summary retrieved successfully"
+    USERS_RETRIEVED = "Users retrieved successfully"
+    USER_RETRIEVED = "User support details retrieved successfully"
+    WORKSPACE_RETRIEVED = "Workspace support details retrieved successfully"
+    GENERATION_RUNS_RETRIEVED = "Generation runs retrieved successfully"
+    PLAN_UPDATED = "User plan updated successfully"
+    SUBSCRIPTION_STATUS_UPDATED = "Subscription status updated successfully"
+    WORKSPACE_UNLOCKED = "Workspace unlocked successfully"
+    PUBLISH_RETRY_QUEUED = "Publishing retry queued successfully"
+    ACTION_LOGS_RETRIEVED = "Admin action logs retrieved successfully"
+
+
+class ContactMessages:
+    ENQUIRY_SUBMITTED = "Your enquiry has been submitted."
+    SUPPORT_ISSUE_SUBMITTED = "Your support issue has been submitted."
+
+
+class AdminErrorMessages:
+    NOT_FOUND = "Not found"
+    INVALID_OTP = "Invalid or expired code."
+    ADMIN_NOT_FOUND = "Admin not found"
+    ENQUIRY_NOT_FOUND = "Enquiry not found"
+    PLAN_NOT_FOUND = "Plan not found"
+    SUBSCRIPTION_NOT_FOUND = "Subscription not found"
+    PUBLISHING_JOB_NOT_FOUND = "Publishing job not found"
+    GENERATED_POST_NOT_FOUND = "Generated post not found"
+    WORKSPACE_MUST_BE_ACTIVE = (
+        "The workspace must be active before retrying publication."
+    )
+    PUBLISH_JOB_NOT_RETRYABLE = (
+        "Only failed or retrying publishing jobs can be retried."
+    )
+    PUBLISH_ALREADY_ACTIVE = (
+        "This post already has a processing or published job and cannot be manually retried."
+    )
+    POST_ALREADY_PUBLISHED = "Post is already published."

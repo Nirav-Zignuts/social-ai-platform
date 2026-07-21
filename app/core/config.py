@@ -81,6 +81,22 @@ class Settings(BaseSettings):
     RATE_LIMIT_DEFAULT: str = os.getenv("RATE_LIMIT_DEFAULT", "120/minute")
     RATE_LIMIT_AUTH: str = os.getenv("RATE_LIMIT_AUTH", "3/minute")
     RATE_LIMIT_AUTH_REFRESH: str = os.getenv("RATE_LIMIT_AUTH_REFRESH", "20/minute")
+    TRUST_PROXY_HEADERS: bool = os.getenv(
+        "TRUST_PROXY_HEADERS",
+        "false",
+    ).lower() in ("1", "true", "yes", "on")
+
+    # Completely separate admin authentication surface. If the prefix or key is
+    # absent, main.py does not register any admin routes (fail closed).
+    ADMIN_ROUTE_PREFIX: str = os.getenv("ADMIN_ROUTE_PREFIX", "")
+    ADMIN_JWE_SECRET: str = os.getenv("ADMIN_JWE_SECRET", "")
+    ADMIN_OTP_PEPPER: str = os.getenv("ADMIN_OTP_PEPPER", "")
+    ADMIN_SESSION_EXPIRE_MINUTES: int = int(
+        os.getenv("ADMIN_SESSION_EXPIRE_MINUTES", "30")
+    )
+    ADMIN_OTP_EXPIRE_MINUTES: int = int(
+        os.getenv("ADMIN_OTP_EXPIRE_MINUTES", "10")
+    )
 
     META_APP_ID: str = os.getenv("META_APP_ID", "")
     META_APP_SECRET: str = os.getenv("META_APP_SECRET", "")

@@ -35,7 +35,7 @@ def get_chat_model(purpose: str) -> BaseChatModel:
     elif provider == "gemini":
         # Default: gemini-2.5-flash — gemini-2.0-flash is listed for this key but has
         # free_tier quota limit:0 (returns 429 RESOURCE_EXHAUSTED on first request).
-        model_name = "gemini-3.1-flash-lite" or os.getenv("GEMINI_MODEL", )
+        model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
     elif provider == "ollama":
         model_name = os.getenv("OLLAMA_MODEL", "llama3")
     elif provider == "groq":

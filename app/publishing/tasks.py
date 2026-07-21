@@ -43,7 +43,7 @@ def _next_attempt_count(db, post_id: UUID) -> int:
     return int(max_prev or 0) + 1
 
 
-def publish_post(post_id: str) -> dict:
+def publish_post(post_id: str, *, bypass_attempt_cap: bool = False) -> dict:
     """
     Publish a single approved post to Instagram (two-step Graph API).
 
@@ -55,7 +55,7 @@ def publish_post(post_id: str) -> dict:
     try:
         pid = UUID(post_id)
         attempt_count = _next_attempt_count(db, pid)
-        if attempt_count > MAX_PUBLISH_ATTEMPTS:
+        if attempt_count > MAX_PUBLISH_ATTEMPTS and not bypass_attempt_cap:
             logger.warning(
                 "publish_post: max attempts exceeded for %s (attempt=%s)",
                 post_id,
@@ -63,7 +63,9 @@ def publish_post(post_id: str) -> dict:
             )
             return {"status": "failed", "error": "max_attempts_exceeded"}
 
-        will_retry = attempt_count < MAX_PUBLISH_ATTEMPTS
+        will_retry = (
+            attempt_count < MAX_PUBLISH_ATTEMPTS and not bypass_attempt_cap
+        )
         try:
             result = publish_post_to_instagram(
                 db,

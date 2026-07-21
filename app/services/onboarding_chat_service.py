@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
 from sqlalchemy.orm import Session
 
+from app.analytics.ai_usage_logger import invoke_structured_with_usage
 from app.common.messages import ErrorMessages
 from app.core.llm_client import get_chat_model
 from app.models.onboarding_chat_message import OnboardingChatMessage
@@ -119,12 +120,16 @@ def synthesize_business_profile(
         _transcript_dicts(messages),
     )
     model = get_chat_model("onboarding_synthesizer")
-    structured = model.with_structured_output(BusinessProfileDraft)
-    draft: BusinessProfileDraft = structured.invoke(
-        [
+    draft: BusinessProfileDraft = invoke_structured_with_usage(
+        model=model,
+        schema=BusinessProfileDraft,
+        prompt=[
             SystemMessage(content=system),
             HumanMessage(content=SYNTHESIS_USER_PROMPT),
-        ]
+        ],
+        workspace_id=session.workspace_id,
+        generated_post_id=None,
+        agent_purpose="onboarding_synthesizer",
     )
     return draft
 
@@ -162,16 +167,21 @@ class OnboardingChatService:
         collected_fields: dict[str, Any],
         transcript: list[dict[str, str]],
         is_opening: bool,
+        workspace_id: UUID,
     ) -> OnboardingChatTurn:
         system = build_turn_system_prompt(collected_fields, transcript)
         user_prompt = OPENING_USER_PROMPT if is_opening else FOLLOW_UP_USER_PROMPT
         model = get_chat_model("onboarding_assistant")
-        structured = model.with_structured_output(OnboardingChatTurn)
-        turn = structured.invoke(
-            [
+        turn = invoke_structured_with_usage(
+            model=model,
+            schema=OnboardingChatTurn,
+            prompt=[
                 SystemMessage(content=system),
                 HumanMessage(content=user_prompt),
-            ]
+            ],
+            workspace_id=workspace_id,
+            generated_post_id=None,
+            agent_purpose="onboarding_assistant",
         )
         return ensure_turn_quick_replies(turn, collected_fields)
 
@@ -210,6 +220,7 @@ class OnboardingChatService:
             collected_fields={},
             transcript=[],
             is_opening=True,
+            workspace_id=workspace_id,
         )
         # Opening turn must not invent extracted fields / completion.
         turn.extracted_updates = {}
@@ -301,6 +312,7 @@ class OnboardingChatService:
             collected_fields=session.collected_fields or {},
             transcript=_transcript_dicts(prior),
             is_opening=False,
+            workspace_id=workspace_id,
         )
 
         session.collected_fields = _merge_collected_fields(
