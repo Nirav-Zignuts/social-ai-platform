@@ -78,8 +78,10 @@ async def subscribe(
 
         if isinstance(e, HTTPException):
             return ErrorMessage(message=e.detail, code=e.status_code)
+        import traceback
+        traceback.print_exc()
         return ErrorMessage(
-            message=ErrorMessages.SERVER_ERROR,
+            message=f"{ErrorMessages.SERVER_ERROR}: {str(e)}",
             code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             details=str(e),
         )
