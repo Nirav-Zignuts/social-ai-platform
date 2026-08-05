@@ -217,6 +217,21 @@ class UserSessionRepository(BaseRepository[UserSession]):
         self.db.delete(session)
         self.db.commit()
 
+    def delete_all_user_sessions(self, user_id: UUID) -> int:
+        """
+        Hard-delete every session row for a user.
+
+        Used on logout so leftover Google/local sessions cannot keep serving
+        refresh tokens after the user signs out.
+        """
+        stmt = select(UserSession).where(UserSession.user_id == user_id)
+        sessions = self.db.execute(stmt).scalars().all()
+        count = len(sessions)
+        for session in sessions:
+            self.db.delete(session)
+        self.db.commit()
+        return count
+
     def get_session_by_refresh_token(self, refresh_token: str) -> UserSession | None:
         """
         Get session by refresh token.

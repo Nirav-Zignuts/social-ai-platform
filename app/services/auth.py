@@ -164,6 +164,9 @@ class AuthService:
         if not user.is_active or user.status != UserStatus.ACTIVE:
             raise AuthenticationError(ErrorMessages.EMAIL_NOT_VERIFIED)
 
+        # Single active session per login — drop leftovers from prior Google/local sessions
+        self.session_repo.delete_all_user_sessions(user.id)
+
         # Generate tokens
         access_token = token_manager.create_access_token(subject=str(user.id))
         refresh_token = token_manager.create_refresh_token(subject=str(user.id))
@@ -197,6 +200,9 @@ class AuthService:
         auth_provider: AuthProvider,
         fcm_token: str | None = None,
     ) -> dict:
+        # Drop prior sessions so a later logout cannot leave an older
+        # refresh token alive (common after repeated Google sign-ins).
+        self.session_repo.delete_all_user_sessions(user_id)
         access_token = token_manager.create_access_token(subject=str(user_id))
         refresh_token = token_manager.create_refresh_token(subject=str(user_id))
         self._create_user_session(
@@ -365,18 +371,20 @@ class AuthService:
 
     def logout_user(self,request: Request, user_id: UUID, device_id: str | None = None) -> None:
         """
-        Logout user by invalidating their session.
+        Logout user by deleting all of their sessions.
 
-        Args:
-            user_id: The user ID
-            device_id: Optional device ID to target specific session
-
-        Raises:
-            Exception: If session not found or deletion fails
+        Google OAuth (and repeated logins) can leave multiple active session
+        rows. Deleting only the current access-token row lets a leftover
+        refresh token keep succeeding after logout — which shows up as a
+        /me 401 → /auth/refresh 200 loop on the frontend.
         """
+        # Best-effort: prefer matching the presented token, but always wipe
+        # every session for this user so refresh cannot revive the login.
         token = get_token_from_header(request)
         session = self.session_repo.get_session_by_token(token)
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found for the given user and device.")
-
-        self.session_repo.delete_session(session)
+        deleted = self.session_repo.delete_all_user_sessions(user_id)
+        if deleted == 0 and not session:
+            raise HTTPException(
+                status_code=404,
+                detail="Session not found for the given user and device.",
+            )

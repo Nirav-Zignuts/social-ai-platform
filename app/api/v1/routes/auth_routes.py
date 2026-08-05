@@ -3,6 +3,7 @@ Authentication API routes.
 """
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.api.v1.schemas.auth_schema import (
@@ -257,10 +258,13 @@ async def refresh_token(
             code=status.HTTP_200_OK,
         )
     except Exception as e:
-        return ErrorMessage(
-            message=ErrorMessages.INVALID_TOKEN,
-            code=status.HTTP_401_UNAUTHORIZED,
-            details=str(e),
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content=ErrorMessage(
+                message=ErrorMessages.INVALID_TOKEN,
+                code=status.HTTP_401_UNAUTHORIZED,
+                details=str(e),
+            ).model_dump(),
         )
 
 

@@ -21,7 +21,7 @@ router = APIRouter(prefix="/auth", tags=["Operations authentication"])
 
 
 @router.post("/request-otp", response_model=SuccessMessage)
-@limiter.limit("3/15minutes")
+@limiter.limit("10/15minutes")
 async def request_admin_otp(
     request: Request,
     payload: AdminOTPRequest,

@@ -42,9 +42,15 @@ def verify_access_token(token: str):
     return user_id
 
 def _session_exists_for_token(db, token: str) -> bool:
-    """Return True if a UserSession record exists with this access_token."""
+    """Return True if an active UserSession exists with this access_token."""
     return (
-        db.query(UserSession.id).filter(UserSession.access_token == token).first()
+        db.query(UserSession.id)
+        .filter(
+            UserSession.access_token == token,
+            UserSession.is_active == True,
+            UserSession.is_deleted == False,
+        )
+        .first()
         is not None
     )
 
