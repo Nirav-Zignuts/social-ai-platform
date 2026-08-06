@@ -17,16 +17,16 @@ class Notification(BaseEntity):
         nullable=False,
         index=True,
     )
-    workspace_id: Mapped[UUID] = mapped_column(
+    workspace_id: Mapped[Optional[UUID]] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     post_id: Mapped[Optional[UUID]] = mapped_column(
         ForeignKey("generated_posts.id", ondelete="CASCADE"),
         nullable=True,
     )
-    type: Mapped[str] = mapped_column(String(30), nullable=False)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)
     channel: Mapped[str] = mapped_column(String(20), nullable=False)
     read_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),

@@ -2,13 +2,14 @@
 Authentication API routes.
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.api.v1.schemas.auth_schema import (
     LoginRequest,
     RegisterRequest,
+    UpdateFcmTokenRequest,
     UserResponse,
     VerifyEmailRequest,
 )
@@ -318,6 +319,41 @@ async def logout(
             message=AuthMessages.LOGOUT_SUCCESS,
             code=status.HTTP_200_OK,
         )
+    except Exception as e:
+        return ErrorMessage(
+            message=ErrorMessages.SERVER_ERROR,
+            code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            details=str(e),
+        )
+
+
+@router.post(
+    "/update-fcm",
+    response_model=SuccessMessage | ErrorMessage,
+    status_code=status.HTTP_200_OK,
+    summary="Update FCM token",
+    description="Register or clear the Firebase Cloud Messaging token for the current session",
+)
+async def update_fcm_token(
+    request: Request,
+    payload: UpdateFcmTokenRequest,
+    current_user: UserResponse = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """
+    Update the FCM device token on the authenticated user's current session.
+
+    Used when the user grants notification permission after login (e.g. from Settings).
+    """
+    try:
+        auth_service = AuthService(db)
+        auth_service.update_fcm_token(request, payload.fcm_token)
+        return SuccessMessage(
+            message=AuthMessages.FCM_TOKEN_UPDATED,
+            code=status.HTTP_200_OK,
+        )
+    except HTTPException as e:
+        return ErrorMessage(message=str(e.detail), code=e.status_code)
     except Exception as e:
         return ErrorMessage(
             message=ErrorMessages.SERVER_ERROR,

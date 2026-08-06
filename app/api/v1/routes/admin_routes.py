@@ -5,6 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 from sqlalchemy.orm import Session
 
 from app.api.v1.schemas.admin_schema import (
+    AdminBroadcastRequest,
     AdminReasonRequest,
     ContactEnquiryUpdate,
     ForceSubscriptionStatusRequest,
@@ -20,8 +21,10 @@ from app.db.session import get_db
 from app.middlewares.admin_auth import require_admin_auth
 from app.models.admin import Admin
 from app.publishing.tasks import publish_post
+from app.services.admin_broadcast_service import AdminBroadcastService
 from app.services.admin_operations_service import AdminOperationsService
 from app.services.contact_enquiry_service import ContactEnquiryService
+from app.services.push_notification_service import process_notification_broadcast
 
 router = APIRouter(
     tags=["Operations"],
@@ -333,6 +336,51 @@ async def retry_publishing_job(
         )
         return SuccessMessage(
             message=AdminMessages.PUBLISH_RETRY_QUEUED,
+            data=data,
+            code=status.HTTP_200_OK,
+        )
+    except Exception as exc:
+        return _error(exc)
+
+
+@router.post("/notifications/broadcast", response_model=SuccessMessage)
+async def broadcast_notification(
+    payload: AdminBroadcastRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(require_admin_auth),
+):
+    try:
+        data = AdminBroadcastService(db).queue_broadcast(
+            admin_id=admin.id,
+            title=payload.title,
+            body=payload.body,
+            deep_link=payload.deep_link,
+            data=payload.data,
+            reason=payload.reason,
+        )
+        background_tasks.add_task(
+            process_notification_broadcast,
+            data["broadcast_id"],
+        )
+        return SuccessMessage(
+            message=AdminMessages.BROADCAST_QUEUED,
+            data=data,
+            code=status.HTTP_202_ACCEPTED,
+        )
+    except Exception as exc:
+        return _error(exc)
+
+
+@router.get("/notifications/broadcast/{broadcast_id}", response_model=SuccessMessage)
+async def get_broadcast_status(
+    broadcast_id: UUID,
+    db: Session = Depends(get_db),
+):
+    try:
+        data = AdminBroadcastService(db).get_broadcast(broadcast_id)
+        return SuccessMessage(
+            message=AdminMessages.BROADCAST_RETRIEVED,
             data=data,
             code=status.HTTP_200_OK,
         )

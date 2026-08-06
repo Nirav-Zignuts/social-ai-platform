@@ -158,6 +158,16 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "")
     RAZORPAY_WEBHOOK_SECRET: str = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
 
+    # Firebase Cloud Messaging (push). Prefer JSON string on PaaS (Render/etc).
+    PUSH_NOTIFICATIONS_ENABLED: bool = os.getenv(
+        "PUSH_NOTIFICATIONS_ENABLED",
+        "false",
+    ).lower() in ("1", "true", "yes", "on")
+    FIREBASE_CREDENTIALS_JSON: str = os.getenv("FIREBASE_CREDENTIALS_JSON", "")
+    FIREBASE_CREDENTIALS_PATH: str = os.getenv("FIREBASE_CREDENTIALS_PATH", "")
+    FIREBASE_PROJECT_ID: str = os.getenv("FIREBASE_PROJECT_ID", "")
+    FCM_ALL_USERS_TOPIC: str = os.getenv("FCM_ALL_USERS_TOPIC", "all_users")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",

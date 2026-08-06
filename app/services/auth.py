@@ -264,6 +264,17 @@ class AuthService:
             device_id=device_data.get("device_id"),
         )
 
+        if fcm_token:
+            from app.services.device_token_service import DeviceTokenService
+
+            DeviceTokenService(self.db).register_if_present(
+                user_id,
+                fcm_token,
+                platform=device_data.get("platform") or "web",
+                device_id=device_data.get("device_id"),
+                app_version=device_data.get("app_version"),
+            )
+
     def verify_email(self, token: str) -> None:
         """
         Verify user email using activation token.
@@ -388,3 +399,33 @@ class AuthService:
                 status_code=404,
                 detail="Session not found for the given user and device.",
             )
+
+    def update_fcm_token(self, request: Request, fcm_token: str | None) -> None:
+        """Attach or clear the FCM token on the caller's current session."""
+        token = get_token_from_header(request)
+        session = self.session_repo.get_session_by_token(token)
+        if not session:
+            raise HTTPException(
+                status_code=404,
+                detail="Session not found for the given access token.",
+            )
+
+        previous = session.fcm_token
+        normalized = (fcm_token or "").strip() or None
+        session.fcm_token = normalized
+        self.db.add(session)
+        self.db.commit()
+
+        from app.services.device_token_service import DeviceTokenService
+
+        device_service = DeviceTokenService(self.db)
+        if normalized:
+            device_service.register_if_present(
+                session.user_id,
+                normalized,
+                platform=session.platform or "web",
+                device_id=session.device_id,
+                app_version=session.app_version,
+            )
+        elif previous:
+            device_service.repo.deactivate_for_user_token(session.user_id, previous)

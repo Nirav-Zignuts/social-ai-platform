@@ -232,6 +232,18 @@ class UserSessionRepository(BaseRepository[UserSession]):
         self.db.commit()
         return count
 
+    def update_fcm_token_for_access_token(
+        self, access_token: str, fcm_token: str | None
+    ) -> bool:
+        """Update the FCM token on the session identified by access_token."""
+        session = self.get_session_by_token(access_token)
+        if not session:
+            return False
+        session.fcm_token = fcm_token
+        self.db.commit()
+        self.db.refresh(session)
+        return True
+
     def get_session_by_refresh_token(self, refresh_token: str) -> UserSession | None:
         """
         Get session by refresh token.

@@ -48,11 +48,13 @@ class NotificationType(str, Enum):
     POST_PUBLISH_SUCCEEDED = "post_publish_succeeded"
     BILLING_PAYMENT_FAILED = "billing_payment_failed"
     BILLING_WORKSPACES_LOCKED = "billing_workspaces_locked"
+    ADMIN_BROADCAST = "admin_broadcast"
 
 
 class NotificationChannel(str, Enum):
     EMAIL = "email"
     IN_APP = "in_app"
+    PUSH = "push"
 
 
 class SocialProvider(str, Enum):

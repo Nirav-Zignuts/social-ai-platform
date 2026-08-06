@@ -60,6 +60,16 @@ class AdminReasonRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class AdminBroadcastRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    body: str = Field(..., min_length=1, max_length=2000)
+    deep_link: str | None = Field(None, max_length=1000)
+    data: dict | None = None
+    reason: str = Field(..., min_length=5, max_length=2000)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class AdminIdentity(BaseModel):
     id: UUID
     email: EmailStr

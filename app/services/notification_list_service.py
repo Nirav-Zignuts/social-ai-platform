@@ -34,9 +34,14 @@ class NotificationListService:
         query = (
             self.db.query(Notification)
             .filter(
-                Notification.workspace_id == workspace_id,
                 Notification.user_id == user_id,
                 Notification.channel == NotificationChannel.IN_APP.value,
+                # Workspace inbox includes that workspace's events plus global
+                # (admin broadcast) announcements for the same user.
+                (
+                    (Notification.workspace_id == workspace_id)
+                    | (Notification.workspace_id.is_(None))
+                ),
             )
             .order_by(Notification.created_at.desc())
         )
@@ -44,6 +49,28 @@ class NotificationListService:
         if unread_only:
             query = query.filter(Notification.read_at.is_(None))
 
+        return query.limit(limit).all()
+
+    def list_user_notifications(
+        self,
+        user_id: UUID,
+        unread_only: bool = False,
+        limit: int = 50,
+        *,
+        global_only: bool = False,
+    ) -> list[Notification]:
+        query = (
+            self.db.query(Notification)
+            .filter(
+                Notification.user_id == user_id,
+                Notification.channel == NotificationChannel.IN_APP.value,
+            )
+            .order_by(Notification.created_at.desc())
+        )
+        if global_only:
+            query = query.filter(Notification.workspace_id.is_(None))
+        if unread_only:
+            query = query.filter(Notification.read_at.is_(None))
         return query.limit(limit).all()
 
     def mark_as_read(
@@ -58,7 +85,34 @@ class NotificationListService:
             self.db.query(Notification)
             .filter(
                 Notification.id == notification_id,
-                Notification.workspace_id == workspace_id,
+                Notification.user_id == user_id,
+                Notification.channel == NotificationChannel.IN_APP.value,
+                (
+                    (Notification.workspace_id == workspace_id)
+                    | (Notification.workspace_id.is_(None))
+                ),
+            )
+            .first()
+        )
+        if not notification:
+            raise HTTPException(status_code=404, detail=ErrorMessages.RESOURCE_NOT_FOUND)
+
+        if notification.read_at is None:
+            notification.read_at = datetime.now(timezone.utc)
+            self.db.commit()
+            self.db.refresh(notification)
+
+        return notification
+
+    def mark_user_notification_read(
+        self,
+        notification_id: UUID,
+        user_id: UUID,
+    ) -> Notification:
+        notification = (
+            self.db.query(Notification)
+            .filter(
+                Notification.id == notification_id,
                 Notification.user_id == user_id,
                 Notification.channel == NotificationChannel.IN_APP.value,
             )

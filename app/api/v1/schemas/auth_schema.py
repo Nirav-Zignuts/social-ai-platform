@@ -43,6 +43,20 @@ class LoginRequest(BaseModel):
     )
 
 
+class UpdateFcmTokenRequest(BaseModel):
+    """Register or clear the FCM token for the current session."""
+
+    fcm_token: Optional[str] = Field(
+        default=None,
+        max_length=512,
+        description="FCM device token. Pass null/omit to clear.",
+    )
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+    )
+
+
 class VerifyEmailRequest(BaseModel):
     token: str
 

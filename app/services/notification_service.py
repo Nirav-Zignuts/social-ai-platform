@@ -41,6 +41,7 @@ NOTIFICATION_MESSAGES = {
         "Some workspaces were locked after your plan changed. "
         "Choose which ones to keep active in Billing settings."
     ),
+    NotificationType.ADMIN_BROADCAST: "You have a new announcement.",
 }
 
 EMAIL_SUBJECTS = {
@@ -73,7 +74,7 @@ def build_billing_settings_link() -> str:
 
 
 def _build_payload(
-    workspace_id: UUID,
+    workspace_id: UUID | None,
     post_id: UUID | None,
     notification_type: NotificationType,
     extra: dict | None = None,
@@ -81,17 +82,22 @@ def _build_payload(
     workspace_name: str | None = None,
 ) -> dict:
     payload = {
-        "message": NOTIFICATION_MESSAGES[notification_type],
+        "message": NOTIFICATION_MESSAGES.get(
+            notification_type,
+            "You have a new notification.",
+        ),
     }
     if workspace_name:
         payload["workspace_name"] = workspace_name
-    if notification_type == NotificationType.INSTAGRAM_TOKEN_EXPIRED:
+    if notification_type == NotificationType.INSTAGRAM_TOKEN_EXPIRED and workspace_id:
         payload["settings_link"] = build_instagram_settings_link(workspace_id)
     elif notification_type == NotificationType.BILLING_PAYMENT_FAILED:
         payload["billing_link"] = build_billing_settings_link()
     elif notification_type == NotificationType.BILLING_WORKSPACES_LOCKED:
         payload["billing_link"] = build_billing_settings_link()
-    elif post_id is not None:
+    elif notification_type == NotificationType.ADMIN_BROADCAST:
+        pass
+    elif post_id is not None and workspace_id is not None:
         payload["review_link"] = build_review_link(workspace_id, post_id)
     if extra:
         payload.update(extra)
@@ -100,19 +106,23 @@ def _build_payload(
 
 def create_notification(
     user_id: UUID,
-    workspace_id: UUID,
+    workspace_id: UUID | None,
     post_id: UUID | None,
     notification_type: NotificationType,
     channel: NotificationChannel,
     db: Session | None = None,
     extra_payload: dict | None = None,
+    *,
+    send_push: bool = True,
 ) -> Notification:
     owns_session = db is None
     session = db or SessionLocal()
     try:
-        workspace = (
-            session.query(Workspace).filter(Workspace.id == workspace_id).first()
-        )
+        workspace = None
+        if workspace_id is not None:
+            workspace = (
+                session.query(Workspace).filter(Workspace.id == workspace_id).first()
+            )
         notification = Notification(
             user_id=user_id,
             workspace_id=workspace_id,
@@ -130,6 +140,16 @@ def create_notification(
         session.add(notification)
         session.commit()
         session.refresh(notification)
+
+        if (
+            send_push
+            and channel == NotificationChannel.IN_APP
+            and settings.PUSH_NOTIFICATIONS_ENABLED
+        ):
+            from app.services.push_notification_service import send_push_for_notification
+
+            send_push_for_notification(notification, db=session)
+
         return notification
     finally:
         if owns_session:
@@ -151,7 +171,7 @@ def send_email_notification(notification: Notification, db: Session | None = Non
             return
 
         payload = dict(notification.payload or {})
-        if "workspace_name" not in payload:
+        if "workspace_name" not in payload and notification.workspace_id:
             workspace = (
                 session.query(Workspace)
                 .filter(Workspace.id == notification.workspace_id)

@@ -11,6 +11,7 @@ from app.api.v1.routes import (
     workspace_routes,
     generated_post_routes,
     notification_routes,
+    device_routes,
     instagram_routes,
     google_oauth_routes,
     internal_cron_routes,
@@ -57,7 +58,15 @@ app.include_router(
     prefix=settings.API_PREFIX,
 )
 app.include_router(
-    notification_routes.router,
+    notification_routes.workspace_router,
+    prefix=settings.API_PREFIX,
+)
+app.include_router(
+    notification_routes.user_router,
+    prefix=settings.API_PREFIX,
+)
+app.include_router(
+    device_routes.router,
     prefix=settings.API_PREFIX,
 )
 app.include_router(

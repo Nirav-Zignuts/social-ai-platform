@@ -27,3 +27,5 @@ from app.models.admin import Admin, AdminOTPCode
 from app.models.contact_enquiry import ContactEnquiry
 from app.models.ai_usage_log import AIUsageLog
 from app.models.admin_action_log import AdminActionLog
+from app.models.device_token import DeviceToken
+from app.models.notification_broadcast import NotificationBroadcast

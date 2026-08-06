@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict
 class NotificationResponse(BaseModel):
     id: UUID
     user_id: UUID
-    workspace_id: UUID
+    workspace_id: Optional[UUID]
     post_id: Optional[UUID]
     type: str
     channel: str
@@ -18,3 +18,18 @@ class NotificationResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DeviceRegisterRequest(BaseModel):
+    fcm_token: str
+    platform: str = "web"
+    device_id: Optional[str] = None
+    app_version: Optional[str] = None
+
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+
+class DeviceUnregisterRequest(BaseModel):
+    fcm_token: str
+
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")

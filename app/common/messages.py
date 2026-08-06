@@ -58,6 +58,9 @@ class AuthMessages:
     LOGIN_SUCCESS = "Login successful"
     LOGOUT_SUCCESS = "Logout successful"
     TOKEN_REFRESHED = "Token refreshed successfully"
+    FCM_TOKEN_UPDATED = "FCM token updated successfully"
+    DEVICE_REGISTERED = "Device registered for push notifications"
+    DEVICE_UNREGISTERED = "Device unregistered from push notifications"
     PASSWORD_CHANGED = "Password changed successfully"
     EMAIL_VERIFIED = "Email verified successfully"
     EMAIL_VERIFICATION_SENT = "Verification email sent"
@@ -134,6 +137,8 @@ class AdminMessages:
     WORKSPACE_UNLOCKED = "Workspace unlocked successfully"
     PUBLISH_RETRY_QUEUED = "Publishing retry queued successfully"
     ACTION_LOGS_RETRIEVED = "Admin action logs retrieved successfully"
+    BROADCAST_QUEUED = "Notification broadcast queued successfully"
+    BROADCAST_RETRIEVED = "Notification broadcast retrieved successfully"
 
 
 class ContactMessages:
