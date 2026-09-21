@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from app.core.config import settings
 from app.core.logger import logger
 from app.db.health import check_database_connection
+from app.core.redis import check_redis_connection
 
 
 @asynccontextmanager
@@ -17,6 +18,8 @@ async def lifespan(app: FastAPI):
     try:
         check_database_connection()
         logger.info("Database connected successfully")
+
+        await check_redis_connection()
     except Exception:
         logger.exception("Database connection failed")
         raise
