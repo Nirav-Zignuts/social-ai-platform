@@ -8,15 +8,14 @@ from app.utils.cloudinary_service import CloudinaryService
 
 logger = logging.getLogger(__name__)
 
-# Positive phrasing (models often ignore / reverse-interpret long "no text" lists).
-IMAGE_VISUAL_GUARDRAILS = (
-    "Photorealistic Instagram brand photograph, square 1:1 composition, "
-    "natural lighting, sharp detail, magazine-quality. "
-    "Pure visual storytelling only: pristine unmarked surfaces, "
-    "blank packaging without labels, environment free of signage. "
-    "Unlettered scene — no typography, logos, watermarks, banners, "
-    "captions, subtitles, posters, stickers, UI, or readable writing of any kind. "
-    "HUMAN ANATOMY QUALITY: if any person is visible, render a coherent, "
+# Kept short and placed AFTER the scene — Flux weights early tokens heavily, and
+# phrases like "blank packaging without labels" / "unmarked surfaces" get read
+# literally as a "branding mockup poster in a frame" (a common stock-photo genre)
+# rather than as a prohibition, so they must not lead the prompt or use that wording.
+IMAGE_STYLE_SUFFIX = (
+    "Photorealistic Instagram brand photo, square 1:1 composition, natural lighting, sharp "
+    "detail, magazine-quality. No text, no logos, no watermarks, no signage "
+    "anywhere in the image. If a person is visible, render a coherent, "
     "anatomically correct real human body."
 )
 
@@ -42,19 +41,17 @@ def assemble_image_prompt(visual_scene: str, caption: str | None = None) -> str:
             "and a single clear focal subject"
         )
 
-    parts = [IMAGE_VISUAL_GUARDRAILS]
+    # Scene goes first — diffusion models weight earlier tokens most heavily,
+    # so the actual subject must lead, with style/guardrail text trailing.
+    parts = [scene]
 
     caption_clean = (caption or "").strip()
     if caption_clean:
-        # Keep alignment with the written post without inviting gibberish overlays.
         parts.append(
-            "Generating image for this Instagram post caption "
-            "(match subject, mood, and story only — "
-            "DO NOT paint, write, carve, or overlay any of these words in the image): "
-            f'"{caption_clean[:400]}"'
+            f'Mood and story should match this caption (do not render the text itself): "{caption_clean[:400]}"'
         )
 
-    parts.append(f"Scene: {scene}")
+    parts.append(IMAGE_STYLE_SUFFIX)
     return " ".join(parts)
 
 
